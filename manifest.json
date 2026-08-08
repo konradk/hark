@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "hark",
+  "name": "Hark",
+  "version": "0.1.0",
+  "description": "A Wayland AI command palette for Omarchy and Hyprland.",
+  "kinds": [
+    "service",
+    "overlay",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "plugin/Service.qml",
+    "overlay": "Overlay.qml",
+    "barWidget": "plugin/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Hark",
+    "description": "Open the Hark AI command palette",
+    "category": "AI",
+    "allowMultiple": false,
+    "defaultSection": "center"
+  }
+}

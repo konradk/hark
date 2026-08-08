@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600">
+  <rect width="960" height="600" fill="#11151c"/>
+  <rect x="42" y="36" width="876" height="528" rx="18" fill="#1b2230" stroke="#60799b" stroke-width="3"/>
+  <rect x="42" y="36" width="876" height="54" rx="18" fill="#263246"/>
+  <rect x="42" y="72" width="876" height="18" fill="#263246"/>
+  <circle cx="76" cy="63" r="8" fill="#bf616a"/>
+  <circle cx="104" cy="63" r="8" fill="#ebcb8b"/>
+  <circle cx="132" cy="63" r="8" fill="#a3be8c"/>
+  <text x="170" y="70" fill="#d8dee9" font-family="monospace" font-size="18">harkd — terminal</text>
+  <g font-family="monospace" font-size="22" fill="#d8dee9">
+    <text x="78" y="140"><tspan fill="#88c0d0">$</tspan> systemctl --user restart harkd</text>
+    <text x="78" y="190">harkd: starting local IPC server</text>
+    <rect x="68" y="218" width="824" height="86" rx="8" fill="#3a2530" stroke="#bf616a" stroke-width="2"/>
+    <text x="88" y="252" fill="#ff9aa3">error: listen unix /run/user/1000/hark/hark.sock:</text>
+    <text x="88" y="284" fill="#ff9aa3">bind: permission denied</text>
+    <text x="78" y="348"><tspan fill="#88c0d0">$</tspan> ls -ld /run/user/1000/hark</text>
+    <text x="78" y="398">drwx------ 2 root root 60 Aug 8 12:40 hark</text>
+    <text x="78" y="466"><tspan fill="#88c0d0">$</tspan> <tspan fill="#d8dee9">_</tspan></text>
+  </g>
+</svg>

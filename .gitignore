@@ -1,0 +1,10 @@
+/harkd
+/harkctl
+/bin/
+/dist/
+/.claude/settings.local.json
+*.env
+*.db
+*.db-shm
+*.db-wal
+coverage.out

@@ -1,0 +1,25 @@
+[Unit]
+Description=Hark AI palette daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%E/hark/env
+ExecStart=%h/.local/bin/harkd
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+TasksMax=64
+LimitNOFILE=1024
+MemoryHigh=768M
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

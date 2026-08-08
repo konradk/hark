@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-24.04
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: 1.25.12
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "${unformatted}" ]]; then
+            printf 'Files requiring gofmt:\n%s\n' "${unformatted}"
+            exit 1
+          fi
+
+      - name: Verify module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go mod verify
+
+      - name: Test with race detector
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Static analysis
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+
+      - name: Scan reachable vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+      - name: Build
+        run: go build ./cmd/harkd ./cmd/harkctl
+
+      - name: Build static plugin runtime
+        run: |
+          scripts/build-plugin-runtime.sh
+          file bin/harkd bin/harkctl | grep -F "statically linked"
+
+      - name: Package plugin tree
+        run: |
+          scripts/package-plugin.sh "${RUNNER_TEMP}/hark-plugin" v0.0.0-test bin
+          test -x "${RUNNER_TEMP}/hark-plugin/bin/harkd"
+          test -f "${RUNNER_TEMP}/hark-plugin/Overlay.qml"
+          test -f "${RUNNER_TEMP}/hark-plugin/plugin/BarWidget.qml"
+          test -f "${RUNNER_TEMP}/hark-plugin/LICENSE"
+          test -f "${RUNNER_TEMP}/hark-plugin/docs/demo/history.png"
+          python3 -c 'import json, os; assert json.load(open(os.environ["RUNNER_TEMP"] + "/hark-plugin/manifest.json"))["version"] == "0.0.0-test"'
+
+  qml-and-shell:
+    name: QML and shell
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates \
+            qml6-module-qtquick-window \
+            qml6-module-qtqml-workerscript \
+            qml6-module-qttest \
+            qt6-declarative-dev-tools \
+            shellcheck
+          echo "/usr/lib/qt6/bin" >> "${GITHUB_PATH}"
+
+      - name: Lint QML and JavaScript
+        run: |
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/workspace:ro" \
+            --workdir /workspace \
+            archlinux:base@sha256:345a872f6c95e082d4b8c050af637eebb57402c6e2177b411c3acf7df84eb33b \
+            bash -lc 'pacman -Syu --noconfirm quickshell >/dev/null && scripts/lint-qml.sh'
+
+      - name: Test URL safety
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: qmltestrunner -input quickshell/tests
+
+      - name: Check shell scripts
+        run: |
+          bash -n scripts/*.sh scripts/testdata/*.sh
+          shellcheck scripts/*.sh scripts/testdata/*.sh
+
+      - name: Validate plugin manifest
+        run: python3 scripts/test-plugin-manifest.py
+
+      - name: Verify systemd unit
+        run: |
+          go build -o "${HOME}/.local/bin/harkd" ./cmd/harkd
+          systemd-analyze --user verify packaging/systemd/harkd.service
+
+      - name: Smoke-test installer
+        env:
+          HARK_NO_RESTART: "1"
+        run: scripts/test-install.sh

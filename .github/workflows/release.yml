@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: 1.25.12
+          cache: true
+
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates \
+            qml6-module-qtquick-window \
+            qml6-module-qtqml-workerscript \
+            qml6-module-qttest \
+            qt6-declarative-dev-tools \
+            shellcheck
+          echo "/usr/lib/qt6/bin" >> "${GITHUB_PATH}"
+
+      - name: Validate Go
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go mod verify
+          go test -race ./...
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
+      - name: Validate QML
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/workspace:ro" \
+            --workdir /workspace \
+            archlinux:base@sha256:345a872f6c95e082d4b8c050af637eebb57402c6e2177b411c3acf7df84eb33b \
+            bash -lc 'pacman -Syu --noconfirm quickshell >/dev/null && scripts/lint-qml.sh'
+          qmltestrunner -input quickshell/tests
+
+      - name: Validate packaging
+        env:
+          HARK_NO_RESTART: "1"
+        run: |
+          bash -n scripts/*.sh scripts/testdata/*.sh
+          shellcheck scripts/*.sh scripts/testdata/*.sh
+          python3 scripts/test-plugin-manifest.py
+          go build -o "${HOME}/.local/bin/harkd" ./cmd/harkd
+          systemd-analyze --user verify packaging/systemd/harkd.service
+          scripts/test-install.sh
+
+      - name: Build release archive
+        run: scripts/release.sh "${GITHUB_REF_NAME}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: "hark-${{ github.ref_name }}-linux"
+          path: dist/*
+
+      # Runs before the GitHub release so a published release always implies
+      # that `omarchy plugin add/update` can already see this version.
+      - name: Publish plugin repository
+        env:
+          PLUGIN_REPO_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: scripts/publish-plugin-repo.sh "${GITHUB_REF_NAME}"
+
+      # Third-party action pinned by commit: this job holds contents: write.
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          generate_release_notes: true
+          files: dist/*
