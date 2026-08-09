@@ -40,6 +40,9 @@ QtObject {
         case "history":
             historyState();
             break;
+        case "history-without-provider":
+            historyWithoutProviderState();
+            break;
         case "demo-history":
             demoHistoryState();
             break;
@@ -161,6 +164,13 @@ QtObject {
 
         app.renderThread();
         app.revealPreview();
+    }
+
+    // A key deleted from a session that already has history: the recent list
+    // must yield to the setup hint instead of looking ready to answer.
+    function historyWithoutProviderState() {
+        historyState();
+        app.previewProviderConfiguredOverride = false;
     }
 
     function demoHistoryState() {

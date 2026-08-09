@@ -87,8 +87,12 @@ PanelWindow {
     readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured
     property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !asking
     property bool promptEmpty: prompt.text.trim().length === 0
-    property bool showHistorySuggestions: settingsController.showRecentChats && promptEmpty && !settingsController.secretsExpanded && !hasThread && historyController.historyModel.count > 0
-    property bool showIdleHint: promptEmpty && !hasThread && (!settingsController.showRecentChats || historyController.historyModel.count === 0) && !settingsController.secretsExpanded
+    // No prompt can be sent without a provider key, so the setup hint outranks
+    // the recent list and stays up while typing. Otherwise a session that still
+    // has history looks fully functional and silently drops every prompt.
+    readonly property bool needsProviderSetup: !hasConfiguredProvider && !hasThread && !settingsController.secretsExpanded
+    property bool showHistorySuggestions: settingsController.showRecentChats && promptEmpty && !settingsController.secretsExpanded && !hasThread && historyController.historyModel.count > 0 && !needsProviderSetup
+    property bool showIdleHint: !hasThread && !settingsController.secretsExpanded && (needsProviderSetup || (promptEmpty && (!settingsController.showRecentChats || historyController.historyModel.count === 0)))
     property bool showResult: hasThread
     property bool showCopyAction: hasAnswer
     property bool showPasteAction: hasAnswer
@@ -916,6 +920,10 @@ PanelWindow {
 
         function previewHistory() {
             root.showDeveloperPreview("history");
+        }
+
+        function previewHistoryWithoutProvider() {
+            root.showDeveloperPreview("history-without-provider");
         }
 
         function previewDemoHistory() {

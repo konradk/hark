@@ -24,6 +24,7 @@ qs -p quickshell/shell.qml ipc call hark previewCode
 qs -p quickshell/shell.qml ipc call hark previewMarkdown
 qs -p quickshell/shell.qml ipc call hark previewSettings
 qs -p quickshell/shell.qml ipc call hark previewHistory
+qs -p quickshell/shell.qml ipc call hark previewHistoryWithoutProvider
 qs -p quickshell/shell.qml ipc call hark previewDemoHistory
 qs -p quickshell/shell.qml ipc call hark previewDemoConversation
 qs -p quickshell/shell.qml ipc call hark previewDemoAttachment
