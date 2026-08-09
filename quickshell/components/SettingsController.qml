@@ -13,6 +13,7 @@ QtObject {
     property bool reasoningSettingLoaded: false
     property string reasoningModesRequestedModel: ""
     property bool reasoningModesReloadPending: false
+    property var modelCatalog: []
     property var modelsModel: ListModel {
     }
 
@@ -61,25 +62,69 @@ QtObject {
 
         try {
             const models = JSON.parse(line);
-            modelsModel.clear();
+            const catalog = [];
             for (const model of models) {
                 const modelId = model.id ?? "";
                 if (modelId.length === 0)
                     continue;
 
-                modelsModel.append({
+                catalog.push({
                     "modelId": modelId,
-                    "label": model.label ?? modelId
+                    "label": model.label ?? modelId,
+                    "provider": String(model.provider ?? "")
                 });
             }
-            if (selectedModel.length === 0 && modelsModel.count > 0)
-                selectedModel = modelsModel.get(0).modelId;
-
-            app.syncModelCombo();
+            modelCatalog = catalog;
+            refreshAvailableModels();
             loadReasoningModes();
         } catch (error) {
             app.statusText = "Model list parse failed";
         }
+    }
+
+    function providerConfigured(provider) {
+        if (provider === "openai")
+            return secretConfigured;
+
+        if (provider === "openrouter")
+            return openRouterSecretConfigured;
+
+        // An unrecognized provider comes from the user's own config and is
+        // resolved by the daemon, so never hide it here.
+        return true;
+    }
+
+    function indexOfAvailableModel(modelId) {
+        for (let index = 0; index < modelsModel.count; index++) {
+            if (modelsModel.get(index).modelId === modelId)
+                return index;
+
+        }
+        return -1;
+    }
+
+    // A model whose provider has no key fails only after the prompt was sent,
+    // so keep those out of the picker and off a stale stored selection.
+    // Returns whether the effective selection had to change.
+    function refreshAvailableModels() {
+        modelsModel.clear();
+        for (const model of modelCatalog) {
+            if (!providerConfigured(model.provider))
+                continue;
+
+            modelsModel.append({
+                "modelId": model.modelId,
+                "label": model.label
+            });
+        }
+        const selectionStale = modelsModel.count > 0 && indexOfAvailableModel(selectedModel) < 0;
+        if (selectionStale)
+            // Deliberately not saved: the stored choice must come back when its
+            // provider key does.
+            selectedModel = modelsModel.get(0).modelId;
+
+        app.syncModelCombo();
+        return selectionStale;
     }
 
     function loadReasoningModes() {
@@ -451,7 +496,8 @@ QtObject {
         onLoaded: (value, found) => {
             if (found && value) {
                 root.selectedModel = String(value);
-                root.app.syncModelCombo();
+                // The stored model may belong to a provider whose key is gone.
+                root.refreshAvailableModels();
                 root.loadReasoningModes();
             }
         }
@@ -526,6 +572,12 @@ QtObject {
         harkctlPath: root.harkctlPath
         provider: "openai"
         label: "OpenAI"
+        // Adding or deleting a key changes which models can answer at all.
+        onConfiguredChanged: {
+            if (root.refreshAvailableModels())
+                root.loadReasoningModes();
+
+        }
     }
 
     property SecretProcess openRouterSecret: SecretProcess {
@@ -535,6 +587,11 @@ QtObject {
         harkctlPath: root.harkctlPath
         provider: "openrouter"
         label: "OpenRouter"
+        onConfiguredChanged: {
+            if (root.refreshAvailableModels())
+                root.loadReasoningModes();
+
+        }
     }
 
     property Process modelsProcess: Process {
