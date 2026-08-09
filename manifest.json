@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "hark",
   "name": "Hark",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A Wayland AI command palette for Omarchy and Hyprland.",
   "kinds": [
     "service",
