@@ -3,7 +3,9 @@
   "id": "hark",
   "name": "Hark",
   "version": "0.1.2",
+  "author": "Konrad Kruk",
   "description": "A Wayland AI command palette for Omarchy and Hyprland.",
+  "license": "MIT",
   "kinds": [
     "service",
     "overlay",

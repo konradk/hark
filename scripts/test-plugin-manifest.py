@@ -8,7 +8,18 @@ root = Path(__file__).resolve().parent.parent
 manifest_path = root / "manifest.json"
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-required = {"schemaVersion", "id", "name", "version", "kinds", "entryPoints"}
+# "author" and "description" are optional for omarchy itself, but the plugin
+# marketplace rejects a listing without them.
+required = {
+    "schemaVersion",
+    "id",
+    "name",
+    "version",
+    "author",
+    "description",
+    "kinds",
+    "entryPoints",
+}
 missing = sorted(required - manifest.keys())
 if missing:
     raise SystemExit(f"manifest is missing: {', '.join(missing)}")
