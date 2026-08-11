@@ -25,7 +25,10 @@ install -m 0755 "${runtime_dir}/harkctl" "${output_dir}/bin/harkctl"
 cp -R "${repo_root}/plugin/." "${output_dir}/plugin/"
 cp -R "${repo_root}/quickshell/." "${output_dir}/quickshell/"
 cp "${repo_root}"/docs/demo/*.png "${output_dir}/docs/demo/"
-cp "${repo_root}/Overlay.qml" "${repo_root}/manifest.json" "${repo_root}/README.md" "${repo_root}/LICENSE" "${output_dir}/"
+# The plugin marketplace only detects a listing preview named preview.* in the
+# published repository root.
+cp "${repo_root}/Overlay.qml" "${repo_root}/manifest.json" "${repo_root}/README.md" \
+  "${repo_root}/LICENSE" "${repo_root}/preview.png" "${output_dir}/"
 
 plugin_version="${version#v}"
 sed -i -E "s/\"version\": \"[^\"]+\"/\"version\": \"${plugin_version}\"/" "${output_dir}/manifest.json"

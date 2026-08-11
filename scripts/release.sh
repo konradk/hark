@@ -94,6 +94,7 @@ tar \
 tar -tzf "${plugin_archive_path}" > "${build_root}/plugin-archive-contents.txt"
 grep -Fqx "${plugin_archive_root}/LICENSE" "${build_root}/plugin-archive-contents.txt"
 grep -Fqx "${plugin_archive_root}/docs/demo/history.png" "${build_root}/plugin-archive-contents.txt"
+grep -Fqx "${plugin_archive_root}/preview.png" "${build_root}/plugin-archive-contents.txt"
 
 (
   cd dist
