@@ -1914,6 +1914,7 @@ PanelWindow {
                         width: 128
                         anchors.verticalCenter: parent.verticalCenter
                         model: settingsController.modelsModel
+                        displayText: currentText.replace(/ \(OpenRouter\)$/, "")
                         tooltipText: "Choose model · Ctrl+M"
                         theme: root.theme
                         enabled: settingsController.modelsModel.count > 0 && !root.asking
