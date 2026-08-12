@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 Item {
     id: pill
@@ -20,6 +21,13 @@ Item {
 
     implicitHeight: 32
     visible: width > 8
+    ToolTip.text: statusText
+    ToolTip.visible: statusHover.hovered && label.truncated
+    ToolTip.delay: 500
+
+    HoverHandler {
+        id: statusHover
+    }
 
     Row {
         anchors.fill: parent

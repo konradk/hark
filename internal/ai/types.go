@@ -76,6 +76,7 @@ type Attachment struct {
 
 type Event struct {
 	Type          EventType       `json:"type"`
+	Provider      string          `json:"provider,omitempty"`
 	Text          string          `json:"text,omitempty"`
 	MessageID     string          `json:"message_id,omitempty"`
 	Error         string          `json:"error,omitempty"`
@@ -102,6 +103,10 @@ const (
 
 type Provider interface {
 	Ask(ctx context.Context, req Request) (<-chan Event, error)
+}
+
+type InitialStatusProvider interface {
+	InitialStatus(Request) string
 }
 
 func ValidateRequest(req Request, allowedModels []string) error {

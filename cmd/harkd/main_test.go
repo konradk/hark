@@ -23,6 +23,15 @@ type fakeProvider struct {
 	err    error
 }
 
+type statusProvider struct {
+	fakeProvider
+	status string
+}
+
+func (provider statusProvider) InitialStatus(ai.Request) string {
+	return provider.status
+}
+
 type providerFunc func(context.Context, ai.Request) (<-chan ai.Event, error)
 
 func (provider providerFunc) Ask(ctx context.Context, request ai.Request) (<-chan ai.Event, error) {
@@ -324,6 +333,37 @@ func TestAskRoutesByModelProviderAndRecordsItInHistory(t *testing.T) {
 	}
 	if store.added[1].Provider != "openrouter" || store.added[1].Response != "openrouter-answer" {
 		t.Fatalf("unexpected second entry: %#v", store.added[1])
+	}
+}
+
+func TestAskSendsProviderStatusBeforeStartingRequest(t *testing.T) {
+	store := &fakeHistory{settings: map[settings.Key]string{settings.SaveHistory: "false"}}
+	app := newTestApp(store)
+	app.providers["openai"] = statusProvider{
+		fakeProvider: fakeProvider{events: []ai.Event{{Type: ai.EventDone}}},
+		status:       "Searching the web...",
+	}
+
+	request := requestWithParams(t, "ask", ai.Request{
+		ConversationID:  "chat-status",
+		Prompt:          "latest news",
+		Model:           app.cfg.Provider.DefaultModel,
+		ReasoningEffort: app.cfg.Provider.DefaultReasoningEffort,
+	})
+	var events []ai.Event
+	if err := app.ask(context.Background(), request, func(value any) error {
+		event, ok := value.(ai.Event)
+		if !ok {
+			t.Fatalf("sent value = %#v, want ai.Event", value)
+		}
+		events = append(events, event)
+		return nil
+	}); err != nil {
+		t.Fatalf("ask returned error: %v", err)
+	}
+
+	if len(events) != 2 || events[0].Type != ai.EventStatus || events[0].Provider != "openai" || events[0].Text != "Searching the web..." || events[1].Type != ai.EventDone || events[1].Provider != "openai" {
+		t.Fatalf("sent events = %#v", events)
 	}
 }
 

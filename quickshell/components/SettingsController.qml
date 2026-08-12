@@ -14,6 +14,7 @@ QtObject {
     property string reasoningModesRequestedModel: ""
     property bool reasoningModesReloadPending: false
     property var modelCatalog: []
+    readonly property string selectedProvider: providerForModel(selectedModel)
     property var modelsModel: ListModel {
     }
 
@@ -92,6 +93,14 @@ QtObject {
         // An unrecognized provider comes from the user's own config and is
         // resolved by the daemon, so never hide it here.
         return true;
+    }
+
+    function providerForModel(modelId) {
+        for (const model of modelCatalog) {
+            if (model.modelId === modelId)
+                return model.provider;
+        }
+        return "";
     }
 
     function indexOfAvailableModel(modelId) {

@@ -143,6 +143,105 @@ git status --short
 Summarize modified behavior, tests actually run, skipped checks, and any
 remaining risk. Do not describe a check as passing unless it was executed.
 
+## Running local changes
+
+Editing this checkout does not necessarily update every part of a running Hark
+session. When the user asks to run the changed application or live verification
+is part of the task, identify the active host and daemon owner before restarting
+anything. Do not restart an unrelated standalone and Omarchy instance together.
+
+### Omarchy development plugin
+
+First confirm that Omarchy is loading this checkout rather than an installed
+release:
+
+```bash
+plugin_root="${XDG_CONFIG_HOME:-${HOME}/.config}/omarchy/plugins/hark"
+readlink -f "${plugin_root}"
+```
+
+For Go changes, rebuild the plugin runtime:
+
+```bash
+scripts/build-plugin-runtime.sh
+```
+
+Then determine who owns the active daemon. If `harkd.service` is active, it is
+an external daemon from the plugin's perspective. Stop it before replacing its
+binaries, install both freshly built executables into the paths used by that
+service, and start it again. For the standard local installation:
+
+```bash
+systemctl --user stop harkd.service
+install -m 0755 bin/harkd "${HOME}/.local/bin/harkd"
+install -m 0755 bin/harkctl "${HOME}/.local/bin/harkctl"
+systemctl --user start harkd.service
+```
+
+Inspect `systemctl --user cat harkd.service` instead of assuming those paths on
+a non-standard installation. If there is no external service, a full Omarchy
+Shell restart destroys the plugin-owned service adapter and starts the freshly
+built `bin/harkd`; never kill a daemon merely because the plugin attached to it.
+
+For any QML, JavaScript, manifest, entry-point, or bundled-runtime change,
+perform a full Shell restart. `omarchy-shell shell rescanPlugins` refreshes
+plugin discovery but may leave an existing Hark service or overlay instance
+alive with old QML, so it is not sufficient for applying code changes.
+
+Never force-restart the Shell while the session is locked. Check first, record
+the current Omarchy Shell PID, restart through the supported command, and prove
+that a new instance is answering IPC:
+
+```bash
+if omarchy-hyprland-session-locked; then
+  echo "Unlock the session before restarting Omarchy Shell" >&2
+  exit 1
+fi
+
+shell_pid() {
+  quickshell list --all --json | jq -r \
+    '.[] | select(.config_path | endswith("/omarchy/shell/shell.qml")) | .pid' | head -n 1
+}
+
+old_shell_pid="$(shell_pid)"
+omarchy restart shell
+new_shell_pid="$(shell_pid)"
+test -n "${new_shell_pid}"
+test "${new_shell_pid}" != "${old_shell_pid}"
+omarchy-shell shell ping
+```
+
+After a daemon replacement, also verify the exact process and IPC protocol:
+
+```bash
+systemctl --user is-active harkd.service
+systemctl --user show harkd.service -p MainPID -p ExecMainStartTimestamp --no-pager
+"${HOME}/.local/bin/harkctl" -timeout 2s status --json --require-protocol 3
+```
+
+Check recent user logs for Hark/QML load errors. Report a refused restart rather
+than claiming deployment succeeded. A successful build, `rescanPlugins`, or an
+unchanged Shell PID is not proof that the new UI is running.
+
+### Standalone development installation
+
+For an installed standalone setup, prefer rerunning `scripts/install.sh`; it
+builds and atomically installs the binaries and shared Quickshell tree, restarts
+an active `harkd.service`, and replaces an already-running standalone
+Quickshell instance. To restart only after files are already installed:
+
+```bash
+systemctl --user restart harkd.service
+shell_path="${XDG_CONFIG_HOME:-${HOME}/.config}/quickshell/hark/shell.qml"
+if qs -p "${shell_path}" list 2>/dev/null | grep -q '^Instance '; then
+  qs -p "${shell_path}" kill
+  qs --daemonize -p "${shell_path}"
+fi
+```
+
+Verify the service, `harkctl status`, and the new standalone Quickshell instance
+before saying the changed application is running.
+
 ## Packaging expectations
 
 - Build plugin runtime binaries with `scripts/build-plugin-runtime.sh`.

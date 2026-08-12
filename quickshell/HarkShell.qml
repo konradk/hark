@@ -4,6 +4,8 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import "components"
+import "js/AskProcess.js" as AskProcess
+import "js/StreamReveal.js" as StreamReveal
 
 PanelWindow {
     id: root
@@ -29,6 +31,7 @@ PanelWindow {
         return directory + (directory.endsWith("/") ? "" : "/") + "shell.qml";
     }
     property string screenshotPath: ""
+    readonly property bool screenshotCapturePending: screenshotProcess.running || screenshotRegionCaptureTimer.running || activeWindowCaptureTimer.running
     property string screenshotSource: screenshotSourceOverride.length > 0 ? screenshotSourceOverride : screenshotPath.length > 0 ? "file://" + screenshotPath : ""
     property string conversationId: ""
     readonly property string clientStateId: "ui-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10)
@@ -37,6 +40,7 @@ PanelWindow {
     property string pendingPasteText: ""
     property string pendingAskPayload: ""
     property string askWarningText: ""
+    property bool askStopRequested: false
     property bool preferSystemTheme: true
     property string promptPlaceholder: hasAttachment ? "Ask about this screenshot..." : hasThread ? "Ask a follow-up..." : "Ask anything..."
     property var theme: ({
@@ -81,11 +85,16 @@ PanelWindow {
     property double lastDismissedAt: 0
     property string streamingAnswer: ""
     property var pendingAnswerChunks: []
+    property int pendingAnswerOffset: 0
+    property string finalAnswerText: ""
+    property bool smoothAnswerStream: false
+    property bool streamDonePending: false
+    readonly property bool responseBusy: asking || streamDonePending
     property bool hasThread: threadMessages.length > 0 || streamingAnswer.length > 0 || answerText.length > 0 || errorText.length > 0 || asking
     property bool hasAnswer: answerText.length > 0
     property bool hasAttachment: screenshotPath.length > 0 || screenshotProcess.running
     readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured
-    property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !asking
+    property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !responseBusy
     property bool promptEmpty: prompt.text.trim().length === 0
     // No prompt can be sent without a provider key, so the setup hint outranks
     // the recent list and stays up while typing. Otherwise a session that still
@@ -96,13 +105,14 @@ PanelWindow {
     property bool showResult: hasThread
     property bool showCopyAction: hasAnswer
     property bool showPasteAction: hasAnswer
-    property bool showRetryAction: errorText.length > 0 && !asking && threadMessages.length > 0
+    property bool showRetryAction: errorText.length > 0 && !responseBusy && threadMessages.length > 0
     property bool showAskAction: asking || canSendPrompt || !hasAnswer
     property bool showAttachAction: screenshotProcess.running || screenshotPath.length === 0
     property int chromeHeight: 58 + 1 + (hasConfiguredProvider ? 1 + 44 : 0)
     property int contentSpacing: 10
     property int contentVPad: 24
     property bool compactPendingThread: asking && answerText.length === 0 && streamingAnswer.length === 0
+    readonly property bool pendingActivityVisible: responseBusy && answerText.length === 0 && streamingAnswer.length === 0 && statusText.length > 0
     property int threadMinResultHeight: compactPendingThread ? 64 : 0
     property int threadMinPanelHeight: 210
     property int settingsPanelHeight: secretPanel.implicitHeight
@@ -165,8 +175,9 @@ PanelWindow {
 
         const text = prompt.text.trim();
         const previousMessages = threadMessages.slice();
-        streamRenderTimer.stop();
-        pendingAnswerChunks = [];
+        discardAnswerDeltas();
+        askStopRequested = false;
+        smoothAnswerStream = settingsController.selectedProvider === "openrouter";
         answerText = "";
         streamingAnswer = "";
         errorText = "";
@@ -280,16 +291,70 @@ PanelWindow {
             return;
 
         pendingAnswerChunks.push(delta);
-        if (!streamRenderTimer.running)
+        if (!streamRenderTimer.running) {
+            streamRenderTimer.interval = smoothAnswerStream ? 32 : 50;
             streamRenderTimer.start();
+        }
+    }
+
+    function pendingAnswerLength() {
+        let length = -pendingAnswerOffset;
+        for (const chunk of pendingAnswerChunks)
+            length += String(chunk).length;
+        return Math.max(0, length);
+    }
+
+    function takePendingAnswer(maximumUnits) {
+        let budget = Math.max(0, Math.floor(Number(maximumUnits)));
+        const pieces = [];
+        while (budget > 0 && pendingAnswerChunks.length > 0) {
+            const chunk = String(pendingAnswerChunks[0]);
+            const remaining = chunk.length - pendingAnswerOffset;
+            let take = Math.min(budget, remaining);
+            const end = pendingAnswerOffset + take;
+            if (take < remaining && end > pendingAnswerOffset) {
+                const before = chunk.charCodeAt(end - 1);
+                const after = chunk.charCodeAt(end);
+                if (before >= 0xD800 && before <= 0xDBFF && after >= 0xDC00 && after <= 0xDFFF)
+                    take += 1;
+            }
+            pieces.push(chunk.slice(pendingAnswerOffset, pendingAnswerOffset + take));
+            pendingAnswerOffset += take;
+            budget -= take;
+            if (pendingAnswerOffset >= chunk.length) {
+                pendingAnswerChunks.shift();
+                pendingAnswerOffset = 0;
+            }
+        }
+        return pieces.join("");
+    }
+
+    function renderAnswerDeltas() {
+        streamRenderTimer.stop();
+        const buffered = pendingAnswerLength();
+        if (buffered > 0) {
+            let units = buffered;
+            if (smoothAnswerStream) {
+                const catchUpMs = streamDonePending ? 1600 : 640;
+                const maximum = streamDonePending ? buffered : 24;
+                units = StreamReveal.unitsForTick(buffered, 32, catchUpMs, maximum);
+            }
+            answerText += takePendingAnswer(units);
+        }
+        streamingAnswer = answerText;
+        renderThread(streamingAnswer);
+        if (pendingAnswerLength() > 0) {
+            streamRenderTimer.start();
+        } else if (streamDonePending) {
+            finishCompletedAnswer();
+        }
     }
 
     function flushAnswerDeltas() {
         streamRenderTimer.stop();
-        if (pendingAnswerChunks.length > 0) {
-            answerText += pendingAnswerChunks.join("");
-            pendingAnswerChunks = [];
-        }
+        const buffered = pendingAnswerLength();
+        if (buffered > 0)
+            answerText += takePendingAnswer(buffered);
         streamingAnswer = answerText;
         renderThread(streamingAnswer);
     }
@@ -297,6 +362,30 @@ PanelWindow {
     function discardAnswerDeltas() {
         streamRenderTimer.stop();
         pendingAnswerChunks = [];
+        pendingAnswerOffset = 0;
+        finalAnswerText = "";
+        streamDonePending = false;
+        smoothAnswerStream = false;
+    }
+
+    function finishCompletedAnswer() {
+        streamRenderTimer.stop();
+        streamDonePending = false;
+        if (finalAnswerText.length > 0)
+            answerText = finalAnswerText;
+        finalAnswerText = "";
+        smoothAnswerStream = false;
+        streamingAnswer = answerText;
+        renderThread(streamingAnswer);
+        if (answerText.length === 0) {
+            root.statusText = askWarningText;
+            finishAssistantMessage("No response text returned.");
+            historyController.loadHistory();
+            return;
+        }
+        root.statusText = askWarningText;
+        finishAssistantMessage(answerText);
+        historyController.loadHistory();
     }
 
     function renderErrorMessage(text) {
@@ -416,8 +505,10 @@ PanelWindow {
     }
 
     function resetForPreview() {
-        if (askProcess.running)
+        if (askProcess.running) {
+            askStopRequested = true;
             askProcess.running = false;
+        }
 
         previewAsking = false;
         previewBackdropColor = "transparent";
@@ -503,6 +594,8 @@ PanelWindow {
 
         try {
             const event = JSON.parse(line);
+            if (event.provider !== undefined && String(event.provider).length > 0)
+                smoothAnswerStream = String(event.provider) === "openrouter";
             if (event.type === "status") {
                 root.statusText = event.text ?? "";
                 statusClearTimer.stop();
@@ -512,10 +605,14 @@ PanelWindow {
 
                 queueAnswerDelta(event.text);
             } else if (event.type === "final") {
-                discardAnswerDeltas();
-                answerText = event.text ?? answerText;
-                streamingAnswer = answerText;
-                renderThread(streamingAnswer);
+                finalAnswerText = event.text ?? "";
+                if (!smoothAnswerStream) {
+                    flushAnswerDeltas();
+                    if (finalAnswerText.length > 0)
+                        answerText = finalAnswerText;
+                    streamingAnswer = answerText;
+                    renderThread(streamingAnswer);
+                }
             } else if (event.type === "error") {
                 discardAnswerDeltas();
                 errorText = event.error ?? "Provider request failed";
@@ -524,16 +621,16 @@ PanelWindow {
                 askWarningText = event.error ?? event.text ?? "The answer was generated with a warning.";
                 root.statusText = askWarningText;
             } else if (event.type === "done") {
-                flushAnswerDeltas();
-                if (answerText.length === 0) {
-                    root.statusText = askWarningText;
-                    finishAssistantMessage("No response text returned.");
-                    historyController.loadHistory();
-                    return;
+                streamDonePending = true;
+                if (smoothAnswerStream && pendingAnswerLength() > 0) {
+                    if (!streamRenderTimer.running) {
+                        streamRenderTimer.interval = 32;
+                        streamRenderTimer.start();
+                    }
+                } else {
+                    flushAnswerDeltas();
+                    finishCompletedAnswer();
                 }
-                root.statusText = askWarningText;
-                finishAssistantMessage(answerText);
-                historyController.loadHistory();
             }
         } catch (error) {
             discardAnswerDeltas();
@@ -543,7 +640,7 @@ PanelWindow {
     }
 
     function handleAskError(line) {
-        if (line.length === 0)
+        if (!AskProcess.shouldHandleErrorLine(line, askStopRequested))
             return ;
 
         discardAnswerDeltas();
@@ -603,16 +700,16 @@ PanelWindow {
     }
 
     function captureScreenshotRegion() {
-        if (screenshotProcess.running)
+        if (screenshotCapturePending)
             return ;
 
         attachmentStatus.text = "Select region...";
         root.hideOverlay(false);
-        screenshotProcess.exec([harkctlPath, "screenshot-region", "--json"]);
+        screenshotRegionCaptureTimer.restart();
     }
 
     function captureActiveWindowScreenshot() {
-        if (screenshotProcess.running)
+        if (screenshotCapturePending)
             return ;
 
         attachmentStatus.text = "Capturing active window...";
@@ -687,6 +784,7 @@ PanelWindow {
         // Preserve the unsent prompt and attachment.
         conversationId = "";
         threadMessages = [];
+        discardAnswerDeltas();
         answerText = "";
         streamingAnswer = "";
         errorText = "";
@@ -770,15 +868,19 @@ PanelWindow {
         if (!askProcess.running)
             return ;
 
+        askStopRequested = true;
         askProcess.running = false;
         flushAnswerDeltas();
+        finalAnswerText = "";
+        streamDonePending = false;
+        smoothAnswerStream = false;
         if (answerText.length > 0) {
             finishAssistantMessage(answerText);
             root.statusText = "Stopped";
         } else {
             streamingAnswer = "";
             root.statusText = "Stopped";
-            renderErrorMessage("Stopped before a response was returned.");
+            renderThread();
         }
     }
 
@@ -1029,7 +1131,7 @@ PanelWindow {
 
         interval: 50
         repeat: false
-        onTriggered: root.flushAnswerDeltas()
+        onTriggered: root.renderAnswerDeltas()
     }
 
     Timer {
@@ -1041,11 +1143,19 @@ PanelWindow {
     }
 
     Timer {
+        id: screenshotRegionCaptureTimer
+
+        interval: 160
+        repeat: false
+        onTriggered: screenshotProcess.exec([root.harkctlPath, "screenshot-region", "--json"])
+    }
+
+    Timer {
         id: activeWindowCaptureTimer
 
         interval: 160
         repeat: false
-        onTriggered: screenshotProcess.exec([harkctlPath, "screenshot-active-window", "--json"])
+        onTriggered: screenshotProcess.exec([root.harkctlPath, "screenshot-active-window", "--json"])
     }
 
     Timer {
@@ -1071,7 +1181,7 @@ PanelWindow {
         onExited: (exitCode, exitStatus) => {
             stdinEnabled = true;
             root.pendingAskPayload = "";
-            if (exitCode !== 0 && root.errorText.length === 0) {
+            if (AskProcess.shouldReportExit(exitCode, root.askStopRequested, root.errorText.length > 0)) {
                 root.errorText = "harkctl exited with code " + exitCode;
                 root.renderErrorMessage(root.errorText);
             }
@@ -1547,6 +1657,7 @@ PanelWindow {
                                     role: message.role ?? "assistant"
                                     content: message.content ?? ""
                                     pending: message.pending ?? false
+                                    activityText: pending && content.length === 0 ? root.statusText : ""
                                     theme: root.theme
                                     onCopyRequested: (text) => {
                                         return root.copyMessageText(text);
@@ -1737,7 +1848,7 @@ PanelWindow {
                     anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     height: 28
-                    statusText: root.statusText
+                    statusText: root.pendingActivityVisible ? "" : root.statusText
                     danger: root.errorText.length > 0
                     theme: root.theme
                 }
@@ -1756,7 +1867,7 @@ PanelWindow {
                         tooltipText: "Attach screenshot region · Ctrl+Shift+C"
                         theme: root.theme
                         visible: root.showAttachAction
-                        enabled: !screenshotProcess.running
+                        enabled: !root.screenshotCapturePending
                         onClicked: root.captureScreenshotRegion()
                     }
 

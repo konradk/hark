@@ -38,6 +38,10 @@ func NewWithAPIKeyProvider(provider func() (string, error)) *Client {
 	}
 }
 
+func (*Client) InitialStatus(ai.Request) string {
+	return "Searching the web..."
+}
+
 func (c *Client) Ask(ctx context.Context, req ai.Request) (<-chan ai.Event, error) {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, errors.New("prompt must not be empty")

@@ -64,6 +64,13 @@ func TestAskStreamsTextDeltas(t *testing.T) {
 	}
 }
 
+func TestInitialStatusReportsWebSearch(t *testing.T) {
+	client := &Client{}
+	if status := client.InitialStatus(ai.Request{}); status != "Searching the web..." {
+		t.Fatalf("InitialStatus = %q", status)
+	}
+}
+
 func TestAskSendsPriorMessagesAndWebPlugin(t *testing.T) {
 	var body chatRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

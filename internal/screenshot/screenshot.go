@@ -50,9 +50,13 @@ func (c Capturer) CaptureRegion(ctx context.Context) (Attachment, error) {
 		return Attachment{}, fmt.Errorf("%s is not installed or not in PATH", slurp)
 	}
 
-	geometryBytes, err := exec.CommandContext(ctx, slurp).Output()
+	geometryBytes, err := exec.CommandContext(ctx, slurp).CombinedOutput()
 	if err != nil {
-		return Attachment{}, fmt.Errorf("%s selection failed: %w", slurp, err)
+		message := strings.TrimSpace(string(geometryBytes))
+		if message == "" {
+			message = err.Error()
+		}
+		return Attachment{}, fmt.Errorf("%s selection failed: %s", slurp, message)
 	}
 
 	geometry := strings.TrimSpace(string(geometryBytes))

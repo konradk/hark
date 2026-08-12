@@ -47,6 +47,13 @@ func (a *appState) ask(ctx context.Context, req ipc.Request, send func(any) erro
 	if state, ok := a.runtimeState(askReq.ConversationID); ok && state.Provider == providerName && state.Model == askReq.Model {
 		askReq.ProviderState = append(askReq.ProviderState[:0], state.ProviderState...)
 	}
+	if statusProvider, ok := provider.(ai.InitialStatusProvider); ok {
+		if status := statusProvider.InitialStatus(askReq); status != "" {
+			if err := send(ai.Event{Type: ai.EventStatus, Provider: providerName, Text: status}); err != nil {
+				return err
+			}
+		}
+	}
 
 	events, err := provider.Ask(ctx, askReq)
 	if err != nil {
@@ -56,6 +63,9 @@ func (a *appState) ask(ctx context.Context, req ipc.Request, send func(any) erro
 	var answer ai.ResponseBuffer
 	a.setLatestAnswer(askReq.ConversationID, "")
 	for event := range events {
+		if event.Provider == "" {
+			event.Provider = providerName
+		}
 		if event.Type == ai.EventDelta {
 			if err := answer.Append(event.Text); err != nil {
 				return err

@@ -10,16 +10,19 @@ Column {
     property string role: "assistant"
     property string content: ""
     property bool pending: false
+    property string activityText: ""
     property bool assistant: role === "assistant"
     property bool errorRole: role === "error"
     property bool userRole: !assistant && !errorRole
     property var theme: null
     property var contentSegments: []
+    readonly property string activityLabel: String(activityText).trim().replace(/[.\u2026]+$/, "").trim().toUpperCase()
+    readonly property string headerText: errorRole ? "ERROR" : assistant ? pending && content.length === 0 && activityLabel.length > 0 ? activityLabel : "ANSWER" : "YOU"
     readonly property bool showMessageCopy: headerMouse.containsMouse || bodyMouse.containsMouse || copyMessageButton.activeFocus || copyMessageButton.hovered
 
     signal copyRequested(string text)
 
-    // Re-parsing the whole message on every streamed token is quadratic, so a
+    // Re-parsing the whole message on every streamed update is quadratic, so a
     // pending message coalesces parses onto a timer. The finished message is
     // always parsed immediately.
     function refreshSegments() {
@@ -28,7 +31,8 @@ Column {
 
     onContentChanged: {
         if (block.pending) {
-            parseThrottle.restart();
+            if (!parseThrottle.running)
+                parseThrottle.start();
         } else {
             parseThrottle.stop();
             block.refreshSegments();
@@ -47,7 +51,7 @@ Column {
     Timer {
         id: parseThrottle
 
-        interval: 90
+        interval: 50
         repeat: false
         onTriggered: block.refreshSegments()
     }
@@ -108,7 +112,7 @@ Column {
             spacing: 8
 
             Text {
-                text: block.errorRole ? "ERROR" : block.assistant ? "ANSWER" : "YOU"
+                text: block.headerText
                 color: block.errorRole ? block.c("error_text", "#ffb4b4") : block.c("text_muted", "#8a93a3")
                 font.family: block.fontFamily
                 font.pixelSize: block.fontSize("caption", 10)
