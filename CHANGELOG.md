@@ -5,6 +5,8 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-13
+
 - Added native xAI support for Grok 4.6 and Grok 4.5, including streaming,
   image input, web search, citations, and API key management. Grok 4.6 is also
   available through OpenRouter.
@@ -48,7 +50,8 @@ follows [Semantic Versioning](https://semver.org/).
   screenshot attachments, clipboard integration, and both Omarchy plugin and
   standalone Hyprland installation modes.
 
-[Unreleased]: https://github.com/konradk/hark/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/konradk/hark/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/konradk/hark/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/konradk/hark/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/konradk/hark/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/konradk/hark/compare/v0.1.3...v0.1.4
