@@ -37,7 +37,7 @@ against a hostile process that already has your UID.
 
 - **API keys** are stored in the Secret Service (via `libsecret`) and never
   logged, serialized into IPC responses, or passed on a command line.
-  Environment variables (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`) are a fallback
+  Environment variables (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `XAI_API_KEY`) are a fallback
   input only.
 - **Prompts and conversation history** are passed to `harkctl` over stdin, not
   as process arguments, so they do not appear in `/proc/<pid>/cmdline`.
@@ -57,6 +57,6 @@ against a hostile process that already has your UID.
 ## Data sent off the machine
 
 Prompts, attached screenshots, and prior turns of the active conversation are
-sent to the configured provider (OpenAI or OpenRouter). Web search is enabled
+sent to the configured provider (OpenAI, OpenRouter, or xAI). Web search is enabled
 by default, so providers may forward query terms to a search backend. Nothing
 else leaves the machine; Hark has no telemetry and performs no update checks.

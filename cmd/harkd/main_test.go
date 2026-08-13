@@ -138,7 +138,7 @@ func (*fakeCleaner) RemoveUnreferenced([]string, time.Time) (int, error) {
 func newTestApp(store *fakeHistory) *appState {
 	cfg := config.Defaults()
 	cfg.Provider.DefaultModel = "gpt-test"
-	cfg.Provider.Models = []config.ModelConfig{{ID: "gpt-test", Label: "Test"}}
+	cfg.Provider.Models = []config.ModelConfig{{ID: "gpt-test", Label: "Test", ReasoningEfforts: []string{"auto", "low", "medium", "high"}}}
 	return &appState{
 		cfg: cfg,
 		providers: map[string]ai.Provider{
@@ -285,8 +285,8 @@ func TestAskRoutesByModelProviderAndRecordsItInHistory(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Provider.DefaultModel = "gpt-test"
 	cfg.Provider.Models = []config.ModelConfig{
-		{ID: "gpt-test", Label: "Test", Provider: "openai"},
-		{ID: "or-test", Label: "OpenRouter Test", Provider: "openrouter"},
+		{ID: "gpt-test", Label: "Test", Provider: "openai", ReasoningEfforts: []string{"auto", "low"}},
+		{ID: "or-test", Label: "OpenRouter Test", Provider: "openrouter", ReasoningEfforts: []string{"auto", "low"}},
 	}
 	app := &appState{
 		cfg: cfg,
@@ -371,7 +371,7 @@ func TestAskFailsForModelWithoutConfiguredProvider(t *testing.T) {
 	store := &fakeHistory{settings: make(map[settings.Key]string)}
 	cfg := config.Defaults()
 	cfg.Provider.DefaultModel = "gpt-test"
-	cfg.Provider.Models = []config.ModelConfig{{ID: "gpt-test", Label: "Test", Provider: "openai"}}
+	cfg.Provider.Models = []config.ModelConfig{{ID: "gpt-test", Label: "Test", Provider: "openai", ReasoningEfforts: []string{"auto", "low"}}}
 	app := &appState{
 		cfg:       cfg,
 		providers: map[string]ai.Provider{},

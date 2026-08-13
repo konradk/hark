@@ -31,6 +31,11 @@ Rectangle {
     property string openRouterSecretKeyInput: ""
     property bool openRouterSecretSaveBusy: false
     property bool openRouterSecretDeleteBusy: false
+    property bool xAISecretConfigured: false
+    property string xAISecretSource: "none"
+    property string xAISecretKeyInput: ""
+    property bool xAISecretSaveBusy: false
+    property bool xAISecretDeleteBusy: false
 
     readonly property real labelWidth: 180
 
@@ -47,6 +52,9 @@ Rectangle {
     signal openRouterSecretInputChanged(string text)
     signal openRouterSecretSaveRequested()
     signal openRouterSecretDeleteRequested()
+    signal xAISecretInputChanged(string text)
+    signal xAISecretSaveRequested()
+    signal xAISecretDeleteRequested()
     signal cancelRequested()
 
     function c(name, fallback) {
@@ -101,6 +109,7 @@ Rectangle {
 
         openAISecretRow.stopEditing();
         openRouterSecretRow.stopEditing();
+        xAISecretRow.stopEditing();
     }
 
     Column {
@@ -301,6 +310,25 @@ Rectangle {
             onInputChanged: text => panel.openRouterSecretInputChanged(text)
             onSaveRequested: panel.openRouterSecretSaveRequested()
             onDeleteRequested: panel.openRouterSecretDeleteRequested()
+            onCancelRequested: panel.cancelRequested()
+        }
+
+        SecretSettingRow {
+            id: xAISecretRow
+
+            width: parent.width
+            title: "xAI"
+            labelWidth: panel.labelWidth
+            configured: panel.xAISecretConfigured
+            source: panel.xAISecretSource
+            keyInput: panel.xAISecretKeyInput
+            saveBusy: panel.xAISecretSaveBusy
+            deleteBusy: panel.xAISecretDeleteBusy
+            theme: panel.theme
+            fontFamily: panel.fontFamily
+            onInputChanged: text => panel.xAISecretInputChanged(text)
+            onSaveRequested: panel.xAISecretSaveRequested()
+            onDeleteRequested: panel.xAISecretDeleteRequested()
             onCancelRequested: panel.cancelRequested()
         }
 

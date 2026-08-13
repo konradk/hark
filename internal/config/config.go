@@ -51,14 +51,16 @@ type ProviderConfig struct {
 }
 
 type ModelConfig struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Provider string `json:"provider"`
+	ID               string   `json:"id"`
+	Label            string   `json:"label"`
+	Provider         string   `json:"provider"`
+	ReasoningEfforts []string `json:"reasoning_efforts"`
 }
 
 const (
 	ProviderOpenAI     = "openai"
 	ProviderOpenRouter = "openrouter"
+	ProviderXAI        = "xai"
 )
 
 type PasteConfig struct {
@@ -76,24 +78,31 @@ func Defaults() Config {
 		Provider: ProviderConfig{
 			DefaultModel:           "gpt-5.6-sol",
 			DefaultReasoningEffort: "low",
-			Models: []ModelConfig{
-				{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Provider: ProviderOpenAI},
-				{ID: "gpt-5.6-terra", Label: "GPT-5.6 Terra", Provider: ProviderOpenAI},
-				{ID: "gpt-5.6-luna", Label: "GPT-5.6 Luna", Provider: ProviderOpenAI},
-				{ID: "gpt-5.5", Label: "GPT-5.5", Provider: ProviderOpenAI},
-				{ID: "gpt-5.4", Label: "GPT-5.4", Provider: ProviderOpenAI},
-				{ID: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Provider: ProviderOpenAI},
-				{ID: "gpt-5.4-nano", Label: "GPT-5.4 Nano", Provider: ProviderOpenAI},
-				{ID: "anthropic/claude-opus-5", Label: "Claude Opus 5 (OpenRouter)", Provider: ProviderOpenRouter},
-				{ID: "google/gemini-3.6-flash", Label: "Gemini 3.6 Flash (OpenRouter)", Provider: ProviderOpenRouter},
-				{ID: "x-ai/grok-4.5", Label: "Grok 4.5 (OpenRouter)", Provider: ProviderOpenRouter},
-			},
+			Models:                 defaultModels(),
 		},
 		Paste: PasteConfig{
 			RestoreFocus: true,
 			DelayMS:      80,
 			Shortcut:     "ctrl_shift_v",
 		},
+	}
+}
+
+func defaultModels() []ModelConfig {
+	return []ModelConfig{
+		{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh", "max"}},
+		{ID: "gpt-5.6-terra", Label: "GPT-5.6 Terra", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh", "max"}},
+		{ID: "gpt-5.6-luna", Label: "GPT-5.6 Luna", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh", "max"}},
+		{ID: "gpt-5.5", Label: "GPT-5.5", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh"}},
+		{ID: "gpt-5.4", Label: "GPT-5.4", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh"}},
+		{ID: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh"}},
+		{ID: "gpt-5.4-nano", Label: "GPT-5.4 Nano", Provider: ProviderOpenAI, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh"}},
+		{ID: "anthropic/claude-opus-5", Label: "Claude Opus 5 (OpenRouter)", Provider: ProviderOpenRouter, ReasoningEfforts: []string{"auto", "none", "low", "medium", "high", "xhigh", "max"}},
+		{ID: "google/gemini-3.6-flash", Label: "Gemini 3.6 Flash (OpenRouter)", Provider: ProviderOpenRouter, ReasoningEfforts: []string{"auto", "minimal", "low", "medium", "high"}},
+		{ID: "x-ai/grok-4.6", Label: "Grok 4.6 (OpenRouter)", Provider: ProviderOpenRouter, ReasoningEfforts: []string{"auto", "low", "medium", "high", "xhigh"}},
+		{ID: "x-ai/grok-4.5", Label: "Grok 4.5 (OpenRouter)", Provider: ProviderOpenRouter, ReasoningEfforts: []string{"auto", "low", "medium", "high"}},
+		{ID: "grok-4.6", Label: "Grok 4.6 (xAI)", Provider: ProviderXAI, ReasoningEfforts: []string{"auto", "low", "medium", "high", "xhigh"}},
+		{ID: "grok-4.5", Label: "Grok 4.5 (xAI)", Provider: ProviderXAI, ReasoningEfforts: []string{"auto", "low", "medium", "high"}},
 	}
 }
 
@@ -188,6 +197,7 @@ func Validate(cfg Config) error {
 		return errors.New("provider.models must contain at least one model")
 	}
 	defaultModelFound := false
+	var defaultModel ModelConfig
 	seenModels := make(map[string]struct{}, len(cfg.Provider.Models))
 	for _, model := range cfg.Provider.Models {
 		if model.ID == "" {
@@ -198,23 +208,32 @@ func Validate(cfg Config) error {
 		}
 		seenModels[model.ID] = struct{}{}
 		switch model.Provider {
-		case "", ProviderOpenAI, ProviderOpenRouter:
+		case "", ProviderOpenAI, ProviderOpenRouter, ProviderXAI:
 		default:
 			return fmt.Errorf("provider.models entry %q has unsupported provider %q", model.ID, model.Provider)
 		}
 		defaultModelFound = defaultModelFound || model.ID == cfg.Provider.DefaultModel
+		if model.ID == cfg.Provider.DefaultModel {
+			defaultModel = model
+		}
+		if len(model.ReasoningEfforts) == 0 {
+			return fmt.Errorf("provider.models entry %q must contain at least one reasoning_effort", model.ID)
+		}
+		seenEfforts := make(map[string]struct{}, len(model.ReasoningEfforts))
+		for _, effort := range model.ReasoningEfforts {
+			if !settings.ValidReasoningEffort(effort) {
+				return fmt.Errorf("provider.models entry %q has unsupported reasoning_effort %q", model.ID, effort)
+			}
+			if _, exists := seenEfforts[effort]; exists {
+				return fmt.Errorf("provider.models entry %q contains duplicate reasoning_effort %q", model.ID, effort)
+			}
+			seenEfforts[effort] = struct{}{}
+		}
 	}
 	if !defaultModelFound {
 		return fmt.Errorf("provider.default_model %q is not present in provider.models", cfg.Provider.DefaultModel)
 	}
-	defaultProvider := ProviderOpenAI
-	for _, model := range cfg.Provider.Models {
-		if model.ID == cfg.Provider.DefaultModel && model.Provider != "" {
-			defaultProvider = model.Provider
-			break
-		}
-	}
-	if !settings.SupportsReasoningEffort(defaultProvider, cfg.Provider.DefaultModel, cfg.Provider.DefaultReasoningEffort) {
+	if !settings.SupportsReasoningEffort(defaultModel.ReasoningEfforts, cfg.Provider.DefaultReasoningEffort) {
 		return fmt.Errorf("provider.default_reasoning_effort %q is not supported by default model %q", cfg.Provider.DefaultReasoningEffort, cfg.Provider.DefaultModel)
 	}
 	if cfg.Paste.DelayMS < 0 {
@@ -355,7 +374,7 @@ func validateModelList(models *lua.LTable) error {
 		switch model := value.(type) {
 		case lua.LString:
 		case *lua.LTable:
-			if err := validateKeys(model, fmt.Sprintf("provider.models[%d]", int(index)), "id", "label", "provider"); err != nil {
+			if err := validateKeys(model, fmt.Sprintf("provider.models[%d]", int(index)), "id", "label", "provider", "reasoning_efforts"); err != nil {
 				validationErr = err
 				return
 			}
@@ -368,6 +387,10 @@ func validateModelList(models *lua.LTable) error {
 			id, ok := model.RawGetString("id").(lua.LString)
 			if !ok || strings.TrimSpace(string(id)) == "" {
 				validationErr = fmt.Errorf("provider.models[%d].id must be a non-empty string", int(index))
+				return
+			}
+			if err := validateOptionalTable(model, "reasoning_efforts", fmt.Sprintf("provider.models[%d].reasoning_efforts", int(index)), validateReasoningEffortList); err != nil {
+				validationErr = err
 			}
 		default:
 			validationErr = fmt.Errorf("provider.models[%d] must be a string or table, got %s", int(index), value.Type())
@@ -379,6 +402,37 @@ func validateModelList(models *lua.LTable) error {
 	for index := 1; index <= count; index++ {
 		if models.RawGetInt(index) == lua.LNil {
 			return fmt.Errorf("provider.models must be a contiguous array; index %d is missing", index)
+		}
+	}
+	return nil
+}
+
+func validateReasoningEffortList(efforts *lua.LTable) error {
+	count := 0
+	var validationErr error
+	efforts.ForEach(func(key, value lua.LValue) {
+		if validationErr != nil {
+			return
+		}
+		index, ok := key.(lua.LNumber)
+		if !ok || index < 1 || float64(int(index)) != float64(index) {
+			validationErr = fmt.Errorf("reasoning_efforts must be a contiguous array, got key %q", key.String())
+			return
+		}
+		count++
+		if value.Type() != lua.LTString {
+			validationErr = fmt.Errorf("reasoning_efforts[%d] must be a string, got %s", int(index), value.Type())
+		}
+	})
+	if validationErr != nil {
+		return validationErr
+	}
+	if count == 0 {
+		return errors.New("reasoning_efforts must contain at least one effort")
+	}
+	for index := 1; index <= count; index++ {
+		if efforts.RawGetInt(index) == lua.LNil {
+			return fmt.Errorf("reasoning_efforts must be a contiguous array; index %d is missing", index)
 		}
 	}
 	return nil
@@ -497,15 +551,37 @@ func modelList(tbl *lua.LTable) []ModelConfig {
 	tbl.ForEach(func(_, value lua.LValue) {
 		switch v := value.(type) {
 		case lua.LString:
-			models = append(models, ModelConfig{ID: string(v), Label: string(v)})
+			id := string(v)
+			models = append(models, ModelConfig{ID: id, Label: id, ReasoningEfforts: defaultReasoningEffortsFor(id)})
 		case *lua.LTable:
 			id := stringValue(v, "id", "")
 			label := stringValue(v, "label", id)
 			provider := stringValue(v, "provider", "")
+			reasoningEfforts := defaultReasoningEffortsFor(id)
+			if configured := table(v, "reasoning_efforts"); configured != nil {
+				reasoningEfforts = stringList(configured)
+			}
 			if id != "" {
-				models = append(models, ModelConfig{ID: id, Label: label, Provider: provider})
+				models = append(models, ModelConfig{ID: id, Label: label, Provider: provider, ReasoningEfforts: reasoningEfforts})
 			}
 		}
 	})
 	return models
+}
+
+func defaultReasoningEffortsFor(id string) []string {
+	for _, model := range defaultModels() {
+		if model.ID == id {
+			return append([]string(nil), model.ReasoningEfforts...)
+		}
+	}
+	return []string{"auto", "low", "medium", "high"}
+}
+
+func stringList(tbl *lua.LTable) []string {
+	values := make([]string, 0, tbl.Len())
+	for index := 1; index <= tbl.Len(); index++ {
+		values = append(values, string(tbl.RawGetInt(index).(lua.LString)))
+	}
+	return values
 }

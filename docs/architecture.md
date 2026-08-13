@@ -22,7 +22,7 @@ daemon through a CLI.
 │ cmd/harkd/               │
 └────────────┬─────────────┘
              │ HTTPS (streaming SSE)
-      OpenAI / OpenRouter
+    OpenAI / OpenRouter / xAI
 ```
 
 The overlay never holds an API key and never opens a socket to a provider. It
@@ -47,8 +47,8 @@ to `ask`, `copy-text`, `paste-text`, and `secret set`.
 | `cmd/harkctl` | Command parsing and output formatting only; no business logic |
 | `internal/ipc` | Socket lifecycle, ownership and permission checks, request/response framing, streaming |
 | `internal/ai` | Provider-neutral request/event types and request validation |
-| `internal/ai/providerkit` | Shared provider plumbing: HTTP client, image loading, SSE helpers, citation formatting |
-| `internal/ai/openai`, `internal/ai/openrouter` | Wire format for one provider each |
+| `internal/ai/providerkit` | Shared provider plumbing: HTTP clients, Responses API, image loading, SSE helpers, citation formatting |
+| `internal/ai/openai`, `internal/ai/openrouter`, `internal/ai/xai` | Thin provider-specific request adapters |
 | `internal/config` | Sandboxed Lua config loader and validation |
 | `internal/settings` | Setting keys, defaults, and value normalization shared by daemon and CLI |
 | `internal/history` | SQLite store, schema migrations, retention and attachment cleanup |
@@ -58,7 +58,7 @@ to `ask`, `copy-text`, `paste-text`, and `secret set`.
 | `internal/clipboard`, `internal/paste`, `internal/hyprland` | Thin wrappers over `wl-copy`, `wtype`, `hyprctl` |
 
 `internal/ai` must not import a concrete provider, and `providerkit` must not
-import `openai` or `openrouter`. That keeps the dependency direction one-way.
+import `openai`, `openrouter`, or `xai`. That keeps the dependency direction one-way.
 
 ## Two hosts
 
@@ -100,7 +100,9 @@ provider request.
 
 ## State
 
-- **Config** (`~/.config/hark/config.lua`) is read once at daemon start.
+- **Config** (`~/.config/hark/config.lua`) is read once at daemon start. Each
+  model entry owns its provider and supported reasoning-effort list; daemon
+  validation, IPC model metadata, and the UI selector use that same catalog.
 - **Settings** (selected model, reasoning effort, retention, …) live in the
   SQLite `settings` table and are read per request.
 - **History** lives in SQLite at `~/.local/share/hark/history.db`, grouped by

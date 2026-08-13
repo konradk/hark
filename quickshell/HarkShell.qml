@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import "components"
 import "js/AskProcess.js" as AskProcess
+import "js/SettingsNavigation.js" as SettingsNavigation
 import "js/StreamReveal.js" as StreamReveal
 
 PanelWindow {
@@ -93,8 +94,8 @@ PanelWindow {
     property bool hasThread: threadMessages.length > 0 || streamingAnswer.length > 0 || answerText.length > 0 || errorText.length > 0 || asking
     property bool hasAnswer: answerText.length > 0
     property bool hasAttachment: screenshotPath.length > 0 || screenshotProcess.running
-    readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured
-    property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !responseBusy
+    readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured || settingsController.xAISecretConfigured
+    property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !responseBusy && !settingsController.secretsExpanded
     property bool promptEmpty: prompt.text.trim().length === 0
     // No prompt can be sent without a provider key, so the setup hint outranks
     // the recent list and stays up while typing. Otherwise a session that still
@@ -108,7 +109,7 @@ PanelWindow {
     property bool showRetryAction: errorText.length > 0 && !responseBusy && threadMessages.length > 0
     property bool showAskAction: asking || canSendPrompt || !hasAnswer
     property bool showAttachAction: screenshotProcess.running || screenshotPath.length === 0
-    property int chromeHeight: 58 + 1 + (hasConfiguredProvider ? 1 + 44 : 0)
+    property int chromeHeight: 58 + 1 + (hasConfiguredProvider && !settingsController.secretsExpanded ? 1 + 44 : 0)
     property int contentSpacing: 10
     property int contentVPad: 24
     property bool compactPendingThread: asking && answerText.length === 0 && streamingAnswer.length === 0
@@ -121,7 +122,7 @@ PanelWindow {
     property int threadResultTargetHeight: Math.min(resultMaxHeight, Math.max(threadMinResultHeight, resultColumn.implicitHeight + 12))
     property int threadPanelTargetHeight: Math.min(panelMaxHeight, Math.max(threadMinPanelHeight, chromeHeight + contentVPad + threadResultTargetHeight + (hasAttachment ? 60 + contentSpacing : 0) + (showHistorySuggestions ? 132 + contentSpacing : 0) + (settingsController.secretsExpanded ? settingsPanelHeight + contentSpacing : 0)))
     property bool contentCollapsed: !hasThread && !hasAttachment && !settingsController.secretsExpanded && !showHistorySuggestions && !showIdleHint
-    property int panelTargetHeight: hasThread ? threadPanelTargetHeight : settingsController.secretsExpanded ? chromeHeight + contentVPad + settingsPanelHeight + (hasAttachment ? 70 : 0) : hasAttachment ? 400 : showHistorySuggestions ? 430 : showIdleHint ? 320 : chromeHeight
+    property int panelTargetHeight: hasThread ? threadPanelTargetHeight : settingsController.secretsExpanded ? chromeHeight + contentVPad + settingsPanelHeight : hasAttachment ? 400 : showHistorySuggestions ? 430 : showIdleHint ? 320 : chromeHeight
     property int historyPanelTargetHeight: Math.max(160, contentArea.height - contentVPad - (hasAttachment ? 60 + contentSpacing : 0) - (settingsController.secretsExpanded ? 208 + contentSpacing : 0))
     readonly property int themeCornerRadius: Math.max(0, Number(theme.corner_radius ?? 14))
     readonly property int themePanelBorderWidth: Math.max(0, Number(theme.panel_border_width ?? 1))
@@ -521,6 +522,7 @@ PanelWindow {
             loadTheme();
         settingsController.secretKeyInput = "";
         settingsController.openRouterSecretKeyInput = "";
+        settingsController.xAISecretKeyInput = "";
         settingsController.secretsExpanded = false;
         historyController.confirmClearHistory = false;
         displayMessages = [];
@@ -756,21 +758,32 @@ PanelWindow {
     }
 
     function toggleSettingsPanel() {
-        settingsController.secretsExpanded = !settingsController.secretsExpanded;
-        if (settingsController.secretsExpanded) {
-            historyController.historySelectionIndex = -1;
-            settingsController.loadSecretStatus();
-            settingsController.loadGlobalShortcut();
-            if (!settingsController.secretConfigured && !settingsController.openRouterSecretConfigured)
-                Qt.callLater(function() {
-                    secretPanel.focusSecretInput();
-                });
-        } else {
+        const action = SettingsNavigation.toggleAction(settingsController.secretsExpanded, hasThread, responseBusy);
+        if (action === "blocked") {
+            root.statusText = "Stop the response before opening settings";
+            return ;
+        }
+
+        if (action === "close") {
+            settingsController.secretsExpanded = false;
             settingsController.secretKeyInput = "";
             settingsController.openRouterSecretKeyInput = "";
+            settingsController.xAISecretKeyInput = "";
             settingsController.shortcutRecording = false;
             settingsController.shortcutRecordingAction = "";
             prompt.forceActiveFocus();
+        } else {
+            if (action === "open-main")
+                showRecentConversations();
+
+            settingsController.secretsExpanded = true;
+            historyController.historySelectionIndex = -1;
+            settingsController.loadSecretStatus();
+            settingsController.loadGlobalShortcut();
+            if (!settingsController.secretConfigured && !settingsController.openRouterSecretConfigured && !settingsController.xAISecretConfigured)
+                Qt.callLater(function() {
+                    secretPanel.focusSecretInput();
+                });
         }
     }
 
@@ -834,6 +847,7 @@ PanelWindow {
             settingsController.secretsExpanded = false;
             settingsController.secretKeyInput = "";
             settingsController.openRouterSecretKeyInput = "";
+            settingsController.xAISecretKeyInput = "";
             settingsController.shortcutRecording = false;
             settingsController.shortcutRecordingAction = "";
             prompt.forceActiveFocus();
@@ -851,6 +865,7 @@ PanelWindow {
             settingsController.secretsExpanded = false;
             settingsController.secretKeyInput = "";
             settingsController.openRouterSecretKeyInput = "";
+            settingsController.xAISecretKeyInput = "";
             settingsController.shortcutRecording = false;
             settingsController.shortcutRecordingAction = "";
         }
@@ -1407,10 +1422,12 @@ PanelWindow {
 
                     anchors.left: parent.left
                     anchors.leftMargin: 20
-                    anchors.right: recentChatsButton.visible ? recentChatsButton.left : escHint.left
+                    anchors.right: recentChatsButton.visible ? recentChatsButton.left : settingsCloseButton.visible ? settingsCloseButton.left : escHint.left
                     anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     height: 36
+                    visible: !settingsController.secretsExpanded
+                    enabled: visible
                     focus: true
                     color: root.theme.text_strong
                     selectedTextColor: root.theme.selection_text
@@ -1484,6 +1501,18 @@ PanelWindow {
 
                 }
 
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 20
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: settingsController.secretsExpanded
+                    text: "Settings"
+                    color: root.theme.text_strong
+                    font.family: root.themeFontFamily
+                    font.pixelSize: root.fontSize("heading", 17)
+                    font.weight: Font.DemiBold
+                }
+
                 IconButton {
                     id: recentChatsButton
 
@@ -1497,6 +1526,20 @@ PanelWindow {
                     tooltipText: "Back to recent conversations · Ctrl+N"
                     theme: root.theme
                     onClicked: root.showRecentConversations()
+                }
+
+                IconButton {
+                    id: settingsCloseButton
+
+                    anchors.right: escHint.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: 28
+                    visible: settingsController.secretsExpanded
+                    symbol: "close"
+                    tooltipText: "Close settings · Esc"
+                    theme: root.theme
+                    onClicked: root.cancelOrClose()
                 }
 
                 Rectangle {
@@ -1550,7 +1593,7 @@ PanelWindow {
 
                         width: parent.width
                         height: 60
-                        visible: root.hasAttachment
+                        visible: root.hasAttachment && !settingsController.secretsExpanded
                         radius: root.cornerRadius(8)
                         color: root.theme.surface
 
@@ -1743,6 +1786,11 @@ PanelWindow {
                         openRouterSecretKeyInput: settingsController.openRouterSecretKeyInput
                         openRouterSecretSaveBusy: settingsController.openRouterSecretSaveBusy
                         openRouterSecretDeleteBusy: settingsController.openRouterSecretDeleteBusy
+                        xAISecretConfigured: settingsController.xAISecretConfigured
+                        xAISecretSource: settingsController.xAISecretSource
+                        xAISecretKeyInput: settingsController.xAISecretKeyInput
+                        xAISecretSaveBusy: settingsController.xAISecretSaveBusy
+                        xAISecretDeleteBusy: settingsController.xAISecretDeleteBusy
                         onShowRecentChatsToggled: checked => settingsController.saveShowRecentChats(checked)
                         onSaveHistoryToggled: checked => settingsController.saveSaveHistory(checked)
                         onRetentionSelected: days => settingsController.saveHistoryRetention(days)
@@ -1756,6 +1804,9 @@ PanelWindow {
                         onOpenRouterSecretInputChanged: text => settingsController.openRouterSecretKeyInput = text
                         onOpenRouterSecretSaveRequested: settingsController.saveOpenRouterSecret()
                         onOpenRouterSecretDeleteRequested: settingsController.deleteOpenRouterSecret()
+                        onXAISecretInputChanged: text => settingsController.xAISecretKeyInput = text
+                        onXAISecretSaveRequested: settingsController.saveXAISecret()
+                        onXAISecretDeleteRequested: settingsController.deleteXAISecret()
                         onCancelRequested: root.cancelOrClose()
                     }
 
@@ -1831,15 +1882,15 @@ PanelWindow {
             Rectangle {
                 width: parent.width
                 height: 1
-                visible: root.hasConfiguredProvider && !root.contentCollapsed
+                visible: root.hasConfiguredProvider && !settingsController.secretsExpanded && !root.contentCollapsed
                 color: root.theme.panel_border
                 opacity: 0.55
             }
 
             Item {
                 width: parent.width
-                height: root.hasConfiguredProvider ? 44 : 0
-                visible: root.hasConfiguredProvider
+                height: root.hasConfiguredProvider && !settingsController.secretsExpanded ? 44 : 0
+                visible: height > 0
 
                 StatusPill {
                     anchors.left: parent.left
@@ -1876,7 +1927,7 @@ PanelWindow {
                         symbol: "sliders"
                         tooltipText: (settingsController.secretsExpanded ? "Hide settings" : "Open settings") + " · Ctrl+,"
                         theme: root.theme
-                        primary: !settingsController.secretConfigured && !settingsController.openRouterSecretConfigured
+                        primary: !settingsController.secretConfigured && !settingsController.openRouterSecretConfigured && !settingsController.xAISecretConfigured
                         enabled: !settingsController.secretStatusBusy
                         onClicked: root.toggleSettingsPanel()
                     }

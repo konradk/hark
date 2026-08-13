@@ -1,5 +1,5 @@
-// Package providerkit holds the HTTP, attachment, and citation plumbing shared
-// by the provider clients. It must not import a concrete provider package.
+// Package providerkit holds the HTTP, Responses API, attachment, and citation
+// plumbing shared by provider clients. It must not import a concrete provider.
 package providerkit
 
 import (

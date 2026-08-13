@@ -186,16 +186,23 @@ func (a *appState) providerNameForModel(model string) string {
 }
 
 func configuredProviderForModel(cfg config.Config, model string) (string, bool) {
-	for _, configured := range cfg.Provider.Models {
-		if configured.ID != model {
-			continue
-		}
-		if configured.Provider == "" {
-			return config.ProviderOpenAI, true
-		}
-		return configured.Provider, true
+	configured, ok := configuredModel(cfg, model)
+	if !ok {
+		return "", false
 	}
-	return "", false
+	if configured.Provider == "" {
+		return config.ProviderOpenAI, true
+	}
+	return configured.Provider, true
+}
+
+func configuredModel(cfg config.Config, model string) (config.ModelConfig, bool) {
+	for _, configured := range cfg.Provider.Models {
+		if configured.ID == model {
+			return configured, true
+		}
+	}
+	return config.ModelConfig{}, false
 }
 
 func (a *appState) settingValue(ctx context.Context, key settings.Key) (any, bool, error) {

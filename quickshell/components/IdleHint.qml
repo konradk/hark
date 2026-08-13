@@ -39,7 +39,7 @@ Item {
             visible: !hint.apiKeyConfigured
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: "Hark needs an OpenAI or OpenRouter API key to answer questions."
+            text: "Hark needs an OpenAI, OpenRouter, or xAI API key to answer questions."
             color: hint.c("text_muted", "#8a93a3")
             font.family: hint.fontFamily
             font.pixelSize: hint.fontSize("body", 12)

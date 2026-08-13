@@ -34,7 +34,7 @@ return {
     default_model = "gpt-test",
     default_reasoning_effort = "high",
     models = {
-      { id = "gpt-test", label = "Test", provider = "openrouter" },
+      { id = "gpt-test", label = "Test", provider = "openrouter", reasoning_efforts = { "auto", "low", "high" } },
       "gpt-other",
     },
   },
@@ -74,6 +74,9 @@ return {
 	if cfg.Provider.Models[0].ID != "gpt-test" || cfg.Provider.Models[0].Label != "Test" || cfg.Provider.Models[0].Provider != "openrouter" {
 		t.Fatalf("unexpected first model: %#v", cfg.Provider.Models[0])
 	}
+	if got := cfg.Provider.Models[0].ReasoningEfforts; len(got) != 3 || got[0] != "auto" || got[2] != "high" {
+		t.Fatalf("unexpected first model reasoning efforts: %#v", got)
+	}
 	if cfg.Provider.Models[1].ID != "gpt-other" || cfg.Provider.Models[1].Provider != "" {
 		t.Fatalf("unexpected second model: %#v", cfg.Provider.Models[1])
 	}
@@ -110,7 +113,7 @@ func TestValidateRejectsMissingAndDuplicateDefaultModels(t *testing.T) {
 
 func TestValidateRejectsUnknownModelProvider(t *testing.T) {
 	cfg := Defaults()
-	cfg.Provider.Models = append(cfg.Provider.Models, ModelConfig{ID: "mystery-model", Provider: "mystery"})
+	cfg.Provider.Models = append(cfg.Provider.Models, ModelConfig{ID: "mystery-model", Provider: "mystery", ReasoningEfforts: []string{"auto"}})
 	if err := Validate(cfg); err == nil {
 		t.Fatal("Validate accepted an unknown model provider")
 	}
@@ -118,9 +121,17 @@ func TestValidateRejectsUnknownModelProvider(t *testing.T) {
 
 func TestValidateAcceptsModelWithoutProvider(t *testing.T) {
 	cfg := Defaults()
-	cfg.Provider.Models = append(cfg.Provider.Models, ModelConfig{ID: "legacy-model"})
+	cfg.Provider.Models = append(cfg.Provider.Models, ModelConfig{ID: "legacy-model", ReasoningEfforts: []string{"auto", "low"}})
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate rejected a model with no provider: %v", err)
+	}
+}
+
+func TestValidateAcceptsXAIProvider(t *testing.T) {
+	cfg := Defaults()
+	cfg.Provider.Models = append(cfg.Provider.Models, ModelConfig{ID: "grok-test", Provider: ProviderXAI, ReasoningEfforts: []string{"auto", "low"}})
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate rejected xAI provider: %v", err)
 	}
 }
 
@@ -129,6 +140,34 @@ func TestValidateRejectsReasoningUnsupportedByDefaultModel(t *testing.T) {
 	cfg.Provider.DefaultReasoningEffort = "minimal"
 	if err := Validate(cfg); err == nil {
 		t.Fatal("Validate accepted minimal reasoning for GPT-5.6")
+	}
+}
+
+func TestDefaultModelsDeclareProviderReasoningEfforts(t *testing.T) {
+	cfg := Defaults()
+	want := map[string][]string{
+		"gpt-5.6-sol":             {"auto", "none", "low", "medium", "high", "xhigh", "max"},
+		"gpt-5.5":                 {"auto", "none", "low", "medium", "high", "xhigh"},
+		"anthropic/claude-opus-5": {"auto", "none", "low", "medium", "high", "xhigh", "max"},
+		"google/gemini-3.6-flash": {"auto", "minimal", "low", "medium", "high"},
+		"x-ai/grok-4.6":           {"auto", "low", "medium", "high", "xhigh"},
+		"x-ai/grok-4.5":           {"auto", "low", "medium", "high"},
+		"grok-4.6":                {"auto", "low", "medium", "high", "xhigh"},
+		"grok-4.5":                {"auto", "low", "medium", "high"},
+	}
+	for _, model := range cfg.Provider.Models {
+		expected, ok := want[model.ID]
+		if !ok {
+			continue
+		}
+		if len(model.ReasoningEfforts) != len(expected) {
+			t.Fatalf("%s efforts = %#v, want %#v", model.ID, model.ReasoningEfforts, expected)
+		}
+		for index := range expected {
+			if model.ReasoningEfforts[index] != expected[index] {
+				t.Fatalf("%s efforts = %#v, want %#v", model.ID, model.ReasoningEfforts, expected)
+			}
+		}
 	}
 }
 
@@ -190,6 +229,8 @@ func TestLoadRejectsWrongTypes(t *testing.T) {
 		"model field":    `return { provider = { models = { { id = 123 } } } }`,
 		"missing id":     `return { provider = { models = { { label = "Test" } } } }`,
 		"model entry":    `return { provider = { models = { true } } }`,
+		"efforts field":  `return { provider = { models = { { id = "gpt-test", reasoning_efforts = "high" } } } }`,
+		"effort entry":   `return { provider = { models = { { id = "gpt-test", reasoning_efforts = { true } } } } }`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.lua")
@@ -205,8 +246,9 @@ func TestLoadRejectsWrongTypes(t *testing.T) {
 
 func TestLoadRejectsEmptyOrSparseModelList(t *testing.T) {
 	for name, source := range map[string]string{
-		"empty":  `return { provider = { models = {} } }`,
-		"sparse": `return { provider = { models = { [2] = "gpt-test" } } }`,
+		"empty":         `return { provider = { models = {} } }`,
+		"sparse":        `return { provider = { models = { [2] = "gpt-test" } } }`,
+		"empty efforts": `return { provider = { models = { { id = "gpt-test", reasoning_efforts = {} } } } }`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.lua")

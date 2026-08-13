@@ -60,6 +60,22 @@ func TestRouterStatusUsesDefaultModelProvider(t *testing.T) {
 	}
 }
 
+func TestRouterStatusUsesXAIModelProvider(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Defaults()
+	cfg.Provider.DefaultModel = "grok-4.5"
+	server := newIPCServer(nil, cfg, serverMetadata{})
+	result, err := server.Handler(context.Background(), ipc.Request{Method: "status"})
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	status := result.(ipc.Status)
+	if status.Provider != config.ProviderXAI {
+		t.Fatalf("provider = %q, want %q", status.Provider, config.ProviderXAI)
+	}
+}
+
 func TestRouterReturnsReasoningModesForRequestedModel(t *testing.T) {
 	t.Parallel()
 
@@ -77,9 +93,13 @@ func TestRouterReturnsReasoningModesForRequestedModel(t *testing.T) {
 	if !ok {
 		t.Fatalf("result type = %T, want []settings.ReasoningMode", result)
 	}
-	for _, mode := range modes {
-		if mode.ID == "xhigh" || mode.ID == "max" || mode.ID == "minimal" || mode.ID == "none" {
-			t.Fatalf("unsupported OpenRouter mode returned: %q", mode.ID)
+	want := []string{"auto", "none", "low", "medium", "high", "xhigh", "max"}
+	if len(modes) != len(want) {
+		t.Fatalf("modes = %#v, want %v", modes, want)
+	}
+	for index, mode := range modes {
+		if mode.ID != want[index] {
+			t.Fatalf("mode %d = %q, want %q", index, mode.ID, want[index])
 		}
 	}
 }

@@ -92,24 +92,21 @@ func TestReasoningModesMatchValidation(t *testing.T) {
 	}
 }
 
-func TestReasoningModesForGPT56ExcludeMinimal(t *testing.T) {
-	modes := ReasoningModesFor("openai", "gpt-5.6-sol")
-	if !SupportsReasoningEffort("openai", "gpt-5.6-sol", "max") {
-		t.Fatal("GPT-5.6 modes do not include max")
+func TestReasoningModesForUsesConfiguredOrder(t *testing.T) {
+	efforts := []string{"auto", "minimal", "high", "max"}
+	modes := ReasoningModesFor(efforts)
+	if len(modes) != len(efforts) {
+		t.Fatalf("ReasoningModesFor returned %d modes, want %d", len(modes), len(efforts))
 	}
-	for _, mode := range modes {
-		if mode.ID == "minimal" {
-			t.Fatal("GPT-5.6 modes unexpectedly include minimal")
+	for index, mode := range modes {
+		if mode.ID != efforts[index] || mode.Label == "" {
+			t.Fatalf("mode %d = %#v, want %q", index, mode, efforts[index])
 		}
 	}
-}
-
-func TestOpenRouterReasoningModesMatchClientSupport(t *testing.T) {
-	for _, mode := range ReasoningModesFor("openrouter", "vendor/model") {
-		switch mode.ID {
-		case "auto", "low", "medium", "high":
-		default:
-			t.Fatalf("unexpected OpenRouter reasoning mode: %q", mode.ID)
-		}
+	if !SupportsReasoningEffort(efforts, "max") {
+		t.Fatal("configured max effort is not supported")
+	}
+	if SupportsReasoningEffort(efforts, "xhigh") {
+		t.Fatal("unconfigured xhigh effort is supported")
 	}
 }

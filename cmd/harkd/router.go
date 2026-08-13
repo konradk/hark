@@ -51,11 +51,11 @@ func newIPCServer(app *appState, cfg config.Config, metadata serverMetadata) ipc
 				if err != nil {
 					return nil, err
 				}
-				provider, ok := configuredProviderForModel(cfg, model)
+				configured, ok := configuredModel(cfg, model)
 				if !ok {
 					return nil, fmt.Errorf("model %q is not configured", model)
 				}
-				return settings.ReasoningModesFor(provider, model), nil
+				return settings.ReasoningModesFor(configured.ReasoningEfforts), nil
 			case "ask":
 				return nil, ipc.ErrUseStream
 			case "copy_latest":

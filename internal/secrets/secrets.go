@@ -93,7 +93,7 @@ func DeleteProviderAPIKey(provider string) error {
 func normalizeProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	switch provider {
-	case "openai", "openrouter":
+	case "openai", "openrouter", "xai":
 		return provider, nil
 	case "":
 		return "", errors.New("provider must not be empty")
@@ -112,6 +112,8 @@ func envAPIKey(provider string) string {
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	case "openrouter":
 		return strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
+	case "xai":
+		return strings.TrimSpace(os.Getenv("XAI_API_KEY"))
 	default:
 		return ""
 	}

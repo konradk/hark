@@ -11,8 +11,6 @@ QtObject {
     property string selectedModel: ""
     property string selectedReasoningEffort: "low"
     property bool reasoningSettingLoaded: false
-    property string reasoningModesRequestedModel: ""
-    property bool reasoningModesReloadPending: false
     property var modelCatalog: []
     readonly property string selectedProvider: providerForModel(selectedModel)
     property var modelsModel: ListModel {
@@ -31,6 +29,9 @@ QtObject {
     property alias openRouterSecretConfigured: openRouterSecretItem.configured
     property alias openRouterSecretSource: openRouterSecretItem.source
     property alias openRouterSecretKeyInput: openRouterSecretItem.keyInput
+    property alias xAISecretConfigured: xAISecretItem.configured
+    property alias xAISecretSource: xAISecretItem.source
+    property alias xAISecretKeyInput: xAISecretItem.keyInput
     property bool globalShortcutConfigured: false
     property string globalShortcut: ""
     property bool screenshotShortcutConfigured: false
@@ -45,11 +46,13 @@ QtObject {
     readonly property bool saveHistoryBusy: saveHistorySetting.busy
     readonly property bool retentionBusy: retentionSetting.busy
     readonly property bool shortcutBusy: shortcutSetProcess.running
-    readonly property bool secretStatusBusy: openAISecret.statusBusy || openRouterSecret.statusBusy
+    readonly property bool secretStatusBusy: openAISecret.statusBusy || openRouterSecret.statusBusy || xAISecret.statusBusy
     readonly property bool secretSaveBusy: openAISecret.saveBusy
     readonly property bool secretDeleteBusy: openAISecret.deleteBusy
     readonly property bool openRouterSecretSaveBusy: openRouterSecret.saveBusy
     readonly property bool openRouterSecretDeleteBusy: openRouterSecret.deleteBusy
+    readonly property bool xAISecretSaveBusy: xAISecret.saveBusy
+    readonly property bool xAISecretDeleteBusy: xAISecret.deleteBusy
 
     function loadModels() {
         if (!modelsProcess.running)
@@ -72,7 +75,8 @@ QtObject {
                 catalog.push({
                     "modelId": modelId,
                     "label": model.label ?? modelId,
-                    "provider": String(model.provider ?? "")
+                    "provider": String(model.provider ?? ""),
+                    "reasoningEfforts": Array.isArray(model.reasoning_efforts) ? model.reasoning_efforts.map(effort => String(effort)) : ["auto"]
                 });
             }
             modelCatalog = catalog;
@@ -89,6 +93,9 @@ QtObject {
 
         if (provider === "openrouter")
             return openRouterSecretConfigured;
+
+        if (provider === "xai")
+            return xAISecretConfigured;
 
         // An unrecognized provider comes from the user's own config and is
         // resolved by the daemon, so never hide it here.
@@ -137,44 +144,20 @@ QtObject {
     }
 
     function loadReasoningModes() {
-        const modelId = selectedModel;
-        if (reasoningModesProcess.running) {
-            reasoningModesReloadPending = true;
-            return ;
-        }
+        reasoningModesModel.clear();
+        for (const model of modelCatalog) {
+            if (model.modelId !== selectedModel)
+                continue;
 
-        reasoningModesRequestedModel = modelId;
-        const args = [harkctlPath, "reasoning-modes", "--json"];
-        if (modelId.length > 0)
-            args.push("--model", modelId);
-
-        reasoningModesProcess.exec(args);
-
-    }
-
-    function handleReasoningModes(line) {
-        if (line.length === 0)
-            return ;
-
-        try {
-            if (reasoningModesRequestedModel.length > 0 && reasoningModesRequestedModel !== selectedModel)
-                return ;
-
-            const modes = JSON.parse(line);
-            reasoningModesModel.clear();
-            for (const mode of modes) {
-                const modeId = String(mode.id ?? "");
-                if (modeId.length > 0)
-                    reasoningModesModel.append({
-                        "label": String(mode.label ?? modeId),
-                        "effort": modeId
-                    });
-
+            for (const effort of model.reasoningEfforts) {
+                reasoningModesModel.append({
+                    "label": effort === "xhigh" ? "XHigh" : effort.charAt(0).toUpperCase() + effort.slice(1),
+                    "effort": effort
+                });
             }
-            ensureSupportedReasoningEffort();
-        } catch (error) {
-            app.statusText = "Reasoning modes parse failed";
+            break;
         }
+        ensureSupportedReasoningEffort();
     }
 
     function ensureSupportedReasoningEffort() {
@@ -269,6 +252,7 @@ QtObject {
     function loadSecretStatus() {
         openAISecret.loadStatus();
         openRouterSecret.loadStatus();
+        xAISecret.loadStatus();
     }
 
     function saveOpenAISecret() {
@@ -285,6 +269,14 @@ QtObject {
 
     function deleteOpenRouterSecret() {
         openRouterSecret.remove();
+    }
+
+    function saveXAISecret() {
+        xAISecret.save();
+    }
+
+    function deleteXAISecret() {
+        xAISecret.remove();
     }
 
     function loadGlobalShortcut() {
@@ -603,6 +595,20 @@ QtObject {
         }
     }
 
+    property SecretProcess xAISecret: SecretProcess {
+        id: xAISecretItem
+
+        app: root.app
+        harkctlPath: root.harkctlPath
+        provider: "xai"
+        label: "xAI"
+        onConfiguredChanged: {
+            if (root.refreshAvailableModels())
+                root.loadReasoningModes();
+
+        }
+    }
+
     property Process modelsProcess: Process {
         stdout: SplitParser {
             onRead: (line) => {
@@ -614,31 +620,6 @@ QtObject {
             onRead: (line) => {
                 if (line.length > 0)
                     console.warn("Hark model list refresh failed:", line.replace(/^harkctl:\s*/, ""));
-
-            }
-        }
-
-    }
-
-    property Process reasoningModesProcess: Process {
-        onExited: {
-            if (!root.reasoningModesReloadPending)
-                return ;
-
-            root.reasoningModesReloadPending = false;
-            Qt.callLater(root.loadReasoningModes);
-        }
-
-        stdout: SplitParser {
-            onRead: (line) => {
-                return root.handleReasoningModes(line);
-            }
-        }
-
-        stderr: SplitParser {
-            onRead: (line) => {
-                if (line.length > 0)
-                    console.warn("Hark reasoning mode refresh failed:", line.replace(/^harkctl:\s*/, ""));
 
             }
         }

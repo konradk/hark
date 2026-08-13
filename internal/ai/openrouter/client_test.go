@@ -158,7 +158,7 @@ func TestAskSendsReasoningEffort(t *testing.T) {
 }
 
 func TestAskOmitsReasoningEffortForUnsupportedValues(t *testing.T) {
-	for _, effort := range []string{"", "auto", "none", "minimal", "xhigh", "max"} {
+	for _, effort := range []string{"", "auto", "invalid"} {
 		var body chatRequest
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -179,6 +179,15 @@ func TestAskOmitsReasoningEffortForUnsupportedValues(t *testing.T) {
 
 		if body.Reasoning != nil {
 			t.Fatalf("effort %q: expected no reasoning config, got %#v", effort, body.Reasoning)
+		}
+	}
+}
+
+func TestReasoningConfigPassesSupportedGatewayEfforts(t *testing.T) {
+	for _, effort := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"} {
+		config := reasoningConfigFor(effort)
+		if config == nil || config.Effort != effort {
+			t.Fatalf("reasoningConfigFor(%q) = %#v", effort, config)
 		}
 	}
 }

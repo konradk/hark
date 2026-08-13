@@ -58,6 +58,22 @@ func TestProviderAPIKeyOpenRouterFallsBackToEnv(t *testing.T) {
 	}
 }
 
+func TestProviderAPIKeyXAIFallsBackToEnv(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("XAI_API_KEY", "env-key")
+
+	key, source, err := ProviderAPIKey("xai")
+	if err != nil {
+		t.Fatalf("ProviderAPIKey returned error: %v", err)
+	}
+	if key != "env-key" {
+		t.Fatalf("unexpected key: %q", key)
+	}
+	if source != SourceEnvironment {
+		t.Fatalf("unexpected source: %q", source)
+	}
+}
+
 func TestDeleteProviderAPIKey(t *testing.T) {
 	keyring.MockInit()
 

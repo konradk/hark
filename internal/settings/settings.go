@@ -43,37 +43,27 @@ var reasoningModes = []ReasoningMode{
 	{ID: "max", Label: "Max"},
 }
 
-var gpt56ReasoningModes = []ReasoningMode{
-	{ID: "auto", Label: "Auto"},
-	{ID: "none", Label: "None"},
-	{ID: "low", Label: "Low"},
-	{ID: "medium", Label: "Medium"},
-	{ID: "high", Label: "High"},
-	{ID: "xhigh", Label: "XHigh"},
-	{ID: "max", Label: "Max"},
-}
-
-var conservativeReasoningModes = []ReasoningMode{
-	{ID: "auto", Label: "Auto"},
-	{ID: "low", Label: "Low"},
-	{ID: "medium", Label: "Medium"},
-	{ID: "high", Label: "High"},
-}
-
 func ReasoningModes() []ReasoningMode {
 	return cloneReasoningModes(reasoningModes)
 }
 
-func ReasoningModesFor(provider, model string) []ReasoningMode {
-	if (provider == "" || provider == "openai") && strings.HasPrefix(model, "gpt-5.6") {
-		return cloneReasoningModes(gpt56ReasoningModes)
+func ReasoningModesFor(efforts []string) []ReasoningMode {
+	modesByID := make(map[string]ReasoningMode, len(reasoningModes))
+	for _, mode := range reasoningModes {
+		modesByID[mode.ID] = mode
 	}
-	return cloneReasoningModes(conservativeReasoningModes)
+	modes := make([]ReasoningMode, 0, len(efforts))
+	for _, effort := range efforts {
+		if mode, ok := modesByID[effort]; ok {
+			modes = append(modes, mode)
+		}
+	}
+	return modes
 }
 
-func SupportsReasoningEffort(provider, model, effort string) bool {
-	for _, mode := range ReasoningModesFor(provider, model) {
-		if mode.ID == effort {
+func SupportsReasoningEffort(efforts []string, effort string) bool {
+	for _, supported := range efforts {
+		if supported == effort {
 			return true
 		}
 	}

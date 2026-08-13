@@ -188,7 +188,7 @@ type apiError struct {
 
 func reasoningConfigFor(effort string) *reasoningConfig {
 	switch strings.TrimSpace(effort) {
-	case "low", "medium", "high":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max":
 		return &reasoningConfig{Effort: effort}
 	default:
 		return nil

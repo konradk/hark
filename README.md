@@ -42,7 +42,7 @@ a Go daemon.
 </table>
 
 
-- text-only streaming through OpenAI or OpenRouter, selectable per model
+- streaming through OpenAI, OpenRouter, or xAI, selectable per model
 - automatic web search with clickable citations and source lists
 - Markdown-formatted response rendering
 - copy latest answer
@@ -137,7 +137,7 @@ Quickshell is required. Clipboard, screenshot, and paste-back features also
 use `wl-clipboard`, `grim`, `slurp`, and `wtype`; `hyprctl` is supplied by
 Hyprland. Run `harkctl doctor --json` to inspect the current system.
 
-Store your OpenAI and/or OpenRouter API key in the desktop Secret Service
+Store your OpenAI, OpenRouter, and/or xAI API key in the desktop Secret Service
 keyring:
 
 ```bash
@@ -146,6 +146,9 @@ harkctl secret status openai
 
 harkctl secret set openrouter
 harkctl secret status openrouter
+
+harkctl secret set xai
+harkctl secret status xai
 ```
 
 You can also read from stdin for scripts:
@@ -153,15 +156,20 @@ You can also read from stdin for scripts:
 ```bash
 printf '%s' "$OPENAI_API_KEY" | harkctl secret set --stdin openai
 printf '%s' "$OPENROUTER_API_KEY" | harkctl secret set --stdin openrouter
+printf '%s' "$XAI_API_KEY" | harkctl secret set --stdin xai
 ```
 
 The keyring always wins. Only when it holds no key — or when no Secret Service
 daemon is running at all, which is common on a minimal Wayland session — does
-Hark fall back to `OPENAI_API_KEY` / `OPENROUTER_API_KEY`. Put them in
+Hark falls back to `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `XAI_API_KEY`. Put them in
 `~/.config/hark/env` (mode 0600, read by the systemd unit); exporting them from
 your shell profile does not reach the daemon, because systemd starts it outside
 your interactive shell. Keys sourced this way are shown as
 `Set by environment variable` in settings and cannot be deleted from the UI.
+
+The native xAI provider uses the Responses API with streaming, image input,
+automatic web search, and clickable citations. The default catalog includes
+`grok-4.6` and `grok-4.5`; Grok 4.6 additionally supports `xhigh` reasoning.
 
 Then start the daemon:
 
@@ -367,10 +375,14 @@ go run ./cmd/harkctl secret delete openai
 go run ./cmd/harkctl secret status openrouter
 go run ./cmd/harkctl secret set openrouter
 go run ./cmd/harkctl secret delete openrouter
+
+go run ./cmd/harkctl secret status xai
+go run ./cmd/harkctl secret set xai
+go run ./cmd/harkctl secret delete xai
 ```
 
 Secrets are stored through the Linux Secret Service keyring when available.
-`OPENAI_API_KEY` and `OPENROUTER_API_KEY` remain supported as environment
+`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `XAI_API_KEY` remain supported as environment
 fallbacks.
 
 History is stored at:
@@ -443,15 +455,19 @@ return {
     default_model = "gpt-5.6-sol",
     default_reasoning_effort = "low",
     models = {
-      { id = "gpt-5.6-sol", label = "GPT-5.6 Sol", provider = "openai" },
-      { id = "gpt-5.6-terra", label = "GPT-5.6 Terra", provider = "openai" },
-      { id = "gpt-5.6-luna", label = "GPT-5.6 Luna", provider = "openai" },
-      { id = "gpt-5.5", label = "GPT-5.5", provider = "openai" },
-      { id = "gpt-5.4", label = "GPT-5.4", provider = "openai" },
-      { id = "gpt-5.4-mini", label = "GPT-5.4 Mini", provider = "openai" },
-      { id = "gpt-5.4-nano", label = "GPT-5.4 Nano", provider = "openai" },
-      { id = "anthropic/claude-opus-5", label = "Claude Opus 5 (OpenRouter)", provider = "openrouter" },
-      { id = "google/gemini-3.6-flash", label = "Gemini 3.6 Flash (OpenRouter)", provider = "openrouter" },
+      { id = "gpt-5.6-sol", label = "GPT-5.6 Sol", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh", "max" } },
+      { id = "gpt-5.6-terra", label = "GPT-5.6 Terra", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh", "max" } },
+      { id = "gpt-5.6-luna", label = "GPT-5.6 Luna", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh", "max" } },
+      { id = "gpt-5.5", label = "GPT-5.5", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh" } },
+      { id = "gpt-5.4", label = "GPT-5.4", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh" } },
+      { id = "gpt-5.4-mini", label = "GPT-5.4 Mini", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh" } },
+      { id = "gpt-5.4-nano", label = "GPT-5.4 Nano", provider = "openai", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh" } },
+      { id = "anthropic/claude-opus-5", label = "Claude Opus 5 (OpenRouter)", provider = "openrouter", reasoning_efforts = { "auto", "none", "low", "medium", "high", "xhigh", "max" } },
+      { id = "google/gemini-3.6-flash", label = "Gemini 3.6 Flash (OpenRouter)", provider = "openrouter", reasoning_efforts = { "auto", "minimal", "low", "medium", "high" } },
+      { id = "x-ai/grok-4.6", label = "Grok 4.6 (OpenRouter)", provider = "openrouter", reasoning_efforts = { "auto", "low", "medium", "high", "xhigh" } },
+      { id = "x-ai/grok-4.5", label = "Grok 4.5 (OpenRouter)", provider = "openrouter", reasoning_efforts = { "auto", "low", "medium", "high" } },
+      { id = "grok-4.6", label = "Grok 4.6 (xAI)", provider = "xai", reasoning_efforts = { "auto", "low", "medium", "high", "xhigh" } },
+      { id = "grok-4.5", label = "Grok 4.5 (xAI)", provider = "xai", reasoning_efforts = { "auto", "low", "medium", "high" } },
     },
   },
 
@@ -463,7 +479,13 @@ return {
 }
 ```
 
+Each model owns its `reasoning_efforts` capability list. `auto` is Hark's
+provider-default option; the remaining values are sent to the provider API.
+When adding a custom model, set this list to the efforts that model accepts.
+
 ## Releases
+
+See [CHANGELOG.md](CHANGELOG.md) for user-visible changes in each release.
 
 Releases are built from annotated or lightweight SemVer tags:
 

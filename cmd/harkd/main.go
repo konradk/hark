@@ -13,6 +13,7 @@ import (
 	"hark/internal/ai"
 	"hark/internal/ai/openai"
 	"hark/internal/ai/openrouter"
+	"hark/internal/ai/xai"
 	"hark/internal/buildinfo"
 	"hark/internal/clipboard"
 	"hark/internal/config"
@@ -69,6 +70,10 @@ func main() {
 		}),
 		openrouter.ProviderName: openrouter.NewWithAPIKeyProvider(func() (string, error) {
 			key, _, err := secrets.ProviderAPIKey(openrouter.ProviderName)
+			return key, err
+		}),
+		xai.ProviderName: xai.NewWithAPIKeyProvider(func() (string, error) {
+			key, _, err := secrets.ProviderAPIKey(xai.ProviderName)
 			return key, err
 		}),
 	}

@@ -36,8 +36,12 @@ func (a *appState) ask(ctx context.Context, req ipc.Request, send func(any) erro
 		return err
 	}
 
+	modelConfig, ok := configuredModel(a.cfg, askReq.Model)
+	if !ok {
+		return fmt.Errorf("model %q is not configured", askReq.Model)
+	}
 	providerName := a.providerNameForModel(askReq.Model)
-	if !settings.SupportsReasoningEffort(providerName, askReq.Model, askReq.ReasoningEffort) {
+	if !settings.SupportsReasoningEffort(modelConfig.ReasoningEfforts, askReq.ReasoningEffort) {
 		return fmt.Errorf("reasoning effort %q is not supported by model %q", askReq.ReasoningEffort, askReq.Model)
 	}
 	provider, ok := a.providers[providerName]
