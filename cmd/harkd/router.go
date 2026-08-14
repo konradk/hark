@@ -62,14 +62,10 @@ func newIPCServer(app *appState, metadata serverMetadata) ipc.Server {
 				return nil, ipc.ErrUseStream
 			case "providers_list":
 				return app.providersList(ctx, req)
-			case "providers_add":
-				return app.providersAdd(ctx, req)
+			case "providers_save":
+				return app.providersSave(ctx, req)
 			case "providers_remove":
 				return app.providersRemove(ctx, req)
-			case "models_add":
-				return app.modelsAdd(ctx, req)
-			case "models_remove":
-				return app.modelsRemove(ctx, req)
 			case "copy_latest":
 				return app.copyLatestRequest(ctx, req)
 			case "copy_text":

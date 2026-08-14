@@ -531,8 +531,9 @@ the config file. The **Providers** section lists every panel-managed provider
 and lets you:
 
 - **Add** or **edit** a provider (name, base URL, and API key).
-- Attach **multiple models** to one provider; each model uses its endpoint
-  model id as its name, so there is nothing extra to name.
+- Type the **model ids** right in the same form; each one becomes a tag you can
+  remove, and a provider can hold **multiple models**. Model names are their
+  endpoint id, so there is nothing extra to name.
 
 Providers created this way are stored by the daemon and merged with the ones
 in `config.lua`; config-file entries take precedence on ID collisions. The
@@ -540,9 +541,7 @@ same operations are available on the CLI:
 
 ```bash
 harkctl provider list --json
-harkctl provider add --json --id local --label "Local vLLM" --base-url http://localhost:8000/v1
-harkctl model add --json --provider local --id llama-3.1-8b
-harkctl model remove --json --id llama-3.1-8b
+harkctl provider save --json --id local --label "Local vLLM" --base-url http://localhost:8000/v1 --model llama-3.1-8b --model llama-3.2
 harkctl provider remove --json --id local
 ```
 

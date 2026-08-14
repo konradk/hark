@@ -54,7 +54,6 @@ QtObject {
     readonly property bool shortcutBusy: shortcutSetProcess.running
     readonly property bool providersBusy: providersListProcess.running || providerAddProcess.running || providerRemoveProcess.running
     readonly property bool providerAddBusy: providerAddProcess.running || providerSecretProcess.running
-    readonly property bool modelsBusy: modelAddProcess.running || modelRemoveProcess.running
     readonly property bool secretStatusBusy: openAISecret.statusBusy || openRouterSecret.statusBusy || xAISecret.statusBusy
     readonly property bool secretSaveBusy: openAISecret.saveBusy
     readonly property bool secretDeleteBusy: openAISecret.deleteBusy
@@ -322,14 +321,19 @@ QtObject {
         return slug.length > 0 ? slug : "provider";
     }
 
-    function addProvider(id, label, baseURL, apiKey) {
+    function addProvider(id, label, baseURL, apiKey, models) {
         if (providerAddProcess.running)
             return ;
 
         pendingProviderID = String(id).trim().length > 0 ? String(id).trim().toLowerCase() : providerIDFromLabel(label);
         pendingProviderKey = String(apiKey).trim();
         app.statusText = "Saving provider...";
-        providerAddProcess.exec([harkctlPath, "provider", "add", "--json", "--id", pendingProviderID, "--label", String(label).trim(), "--base-url", String(baseURL).trim()]);
+        const args = [harkctlPath, "provider", "save", "--json", "--id", pendingProviderID, "--label", String(label).trim(), "--base-url", String(baseURL).trim()];
+        const modelList = Array.isArray(models) ? models : [];
+        for (const modelID of modelList)
+            args.push("--model", String(modelID).trim());
+
+        providerAddProcess.exec(args);
     }
 
     function removeProvider(id) {
@@ -338,28 +342,6 @@ QtObject {
 
         app.statusText = "Removing provider...";
         providerRemoveProcess.exec([harkctlPath, "provider", "remove", "--json", "--id", id]);
-    }
-
-    function addModel(providerID, modelID) {
-        if (modelAddProcess.running)
-            return ;
-
-        app.statusText = "Adding model...";
-        modelAddProcess.exec([harkctlPath, "model", "add", "--json", "--provider", providerID, "--id", String(modelID).trim()]);
-    }
-
-    function removeModel(modelID) {
-        if (modelRemoveProcess.running)
-            return ;
-
-        app.statusText = "Removing model...";
-        modelRemoveProcess.exec([harkctlPath, "model", "remove", "--json", "--id", modelID]);
-    }
-
-    function refreshAfterModelChange(successText) {
-        app.statusText = successText;
-        loadProviders();
-        loadModels();
     }
 
     function finishProviderChange(successText) {
@@ -868,44 +850,6 @@ QtObject {
         onExited: (exitCode) => {
             if (exitCode === 0) {
                 root.finishProviderChange("Provider removed");
-                return ;
-            }
-            root.loadProviders();
-        }
-
-        stderr: SplitParser {
-            onRead: (line) => {
-                if (line.length > 0)
-                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
-
-            }
-        }
-
-    }
-
-    property Process modelAddProcess: Process {
-        onExited: (exitCode) => {
-            if (exitCode === 0) {
-                root.refreshAfterModelChange("Model added");
-                return ;
-            }
-            root.loadProviders();
-        }
-
-        stderr: SplitParser {
-            onRead: (line) => {
-                if (line.length > 0)
-                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
-
-            }
-        }
-
-    }
-
-    property Process modelRemoveProcess: Process {
-        onExited: (exitCode) => {
-            if (exitCode === 0) {
-                root.refreshAfterModelChange("Model removed");
                 return ;
             }
             root.loadProviders();

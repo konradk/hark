@@ -1800,7 +1800,6 @@ PanelWindow {
                         providersModel: settingsController.providersModel
                         providersBusy: settingsController.providersBusy
                         providerAddBusy: settingsController.providerAddBusy
-                        modelsBusy: settingsController.modelsBusy
                         onShowRecentChatsToggled: checked => settingsController.saveShowRecentChats(checked)
                         onSaveHistoryToggled: checked => settingsController.saveSaveHistory(checked)
                         onRetentionSelected: days => settingsController.saveHistoryRetention(days)
@@ -1817,10 +1816,8 @@ PanelWindow {
                         onXAISecretInputChanged: text => settingsController.xAISecretKeyInput = text
                         onXAISecretSaveRequested: settingsController.saveXAISecret()
                         onXAISecretDeleteRequested: settingsController.deleteXAISecret()
-                        onProviderSaveRequested: (id, label, baseURL, key) => settingsController.addProvider(id, label, baseURL, key)
+                        onProviderSaveRequested: (id, label, baseURL, key, models) => settingsController.addProvider(id, label, baseURL, key, models)
                         onProviderRemoveRequested: id => settingsController.removeProvider(id)
-                        onModelAddRequested: (providerId, modelId) => settingsController.addModel(providerId, modelId)
-                        onModelRemoveRequested: modelId => settingsController.removeModel(modelId)
                         onCancelRequested: root.cancelOrClose()
                     }
 

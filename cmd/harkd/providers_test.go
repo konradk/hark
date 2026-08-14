@@ -7,44 +7,38 @@ import (
 	"hark/internal/config"
 )
 
-func addProvider(t *testing.T, app *appState, id, baseURL string) {
+func saveProvider(t *testing.T, app *appState, id, baseURL string, models ...string) {
 	t.Helper()
-	if _, err := app.providersAdd(context.Background(), requestWithParams(t, "providers_add", providerAddRequest{
-		ID: id, Label: id, BaseURL: baseURL,
+	if _, err := app.providersSave(context.Background(), requestWithParams(t, "providers_save", providerSaveRequest{
+		ID: id, Label: id, BaseURL: baseURL, Models: models,
 	})); err != nil {
-		t.Fatalf("providersAdd returned error: %v", err)
+		t.Fatalf("providersSave returned error: %v", err)
 	}
 }
 
-func addModel(t *testing.T, app *appState, provider, id string) {
-	t.Helper()
-	if _, err := app.modelsAdd(context.Background(), requestWithParams(t, "models_add", modelAddRequest{
-		Provider: provider, ID: id,
-	})); err != nil {
-		t.Fatalf("modelsAdd returned error: %v", err)
-	}
-}
-
-func TestProvidersAddRegistersProvider(t *testing.T) {
+func TestProvidersSaveRegistersProviderAndModels(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
 
-	addProvider(t, app, "local", "http://localhost:8000/v1")
+	saveProvider(t, app, "local", "http://localhost:8000/v1", "llama-3", "llama-2")
 
 	cfg := app.snapshotConfig()
 	if !hasProvider(cfg, "local", "http://localhost:8000/v1") {
 		t.Fatalf("merged providers = %#v, want local", cfg.Providers)
+	}
+	if !hasModel(cfg, "llama-3", "local") || !hasModel(cfg, "llama-2", "local") {
+		t.Fatalf("merged models = %#v, want llama-3 and llama-2 -> local", cfg.Provider.Models)
 	}
 	if _, ok := app.snapshotProviders()["local"]; !ok {
 		t.Fatal("providers map does not contain local")
 	}
 }
 
-func TestProvidersAddDefaultsLabelToID(t *testing.T) {
+func TestProvidersSaveDefaultsLabelToID(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
-	if _, err := app.providersAdd(context.Background(), requestWithParams(t, "providers_add", providerAddRequest{
+	if _, err := app.providersSave(context.Background(), requestWithParams(t, "providers_save", providerSaveRequest{
 		ID: "corp-gw", BaseURL: "https://gw.example.com/v1",
 	})); err != nil {
-		t.Fatalf("providersAdd returned error: %v", err)
+		t.Fatalf("providersSave returned error: %v", err)
 	}
 
 	cfg := app.snapshotConfig()
@@ -55,24 +49,39 @@ func TestProvidersAddDefaultsLabelToID(t *testing.T) {
 	}
 }
 
-func TestProvidersAddUpdatesExistingProvider(t *testing.T) {
+func TestProvidersSaveUpdatesBaseURL(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
 
-	addProvider(t, app, "local", "http://localhost:8000/v1")
-	addProvider(t, app, "local", "http://localhost:9000/v1")
+	saveProvider(t, app, "local", "http://localhost:8000/v1", "llama-3")
+	saveProvider(t, app, "local", "http://localhost:9000/v1", "llama-3")
 
 	cfg := app.snapshotConfig()
 	if !hasProvider(cfg, "local", "http://localhost:9000/v1") {
 		t.Fatalf("merged providers = %#v, want updated base URL", cfg.Providers)
 	}
-	if hasProvider(cfg, "local", "http://localhost:8000/v1") {
-		t.Fatal("stale base URL still present")
+	if !hasModel(cfg, "llama-3", "local") {
+		t.Fatal("model was dropped during an in-place edit")
 	}
 }
 
-func TestProvidersAddRejectsBuiltinID(t *testing.T) {
+func TestProvidersSaveRemovesDroppedModels(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
-	_, err := app.providersAdd(context.Background(), requestWithParams(t, "providers_add", providerAddRequest{
+
+	saveProvider(t, app, "local", "http://localhost:8000/v1", "llama-3", "llama-2")
+	saveProvider(t, app, "local", "http://localhost:8000/v1", "llama-3")
+
+	cfg := app.snapshotConfig()
+	if !hasModel(cfg, "llama-3", "local") {
+		t.Fatal("kept model is missing")
+	}
+	if hasModel(cfg, "llama-2", "local") {
+		t.Fatal("dropped model still present")
+	}
+}
+
+func TestProvidersSaveRejectsBuiltinID(t *testing.T) {
+	app := newTestApp(&fakeHistory{})
+	_, err := app.providersSave(context.Background(), requestWithParams(t, "providers_save", providerSaveRequest{
 		ID: "openai", BaseURL: "http://localhost/v1",
 	}))
 	if err == nil {
@@ -80,9 +89,9 @@ func TestProvidersAddRejectsBuiltinID(t *testing.T) {
 	}
 }
 
-func TestProvidersAddRejectsInvalidBaseURL(t *testing.T) {
+func TestProvidersSaveRejectsInvalidBaseURL(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
-	_, err := app.providersAdd(context.Background(), requestWithParams(t, "providers_add", providerAddRequest{
+	_, err := app.providersSave(context.Background(), requestWithParams(t, "providers_save", providerSaveRequest{
 		ID: "local", BaseURL: "not-a-url",
 	}))
 	if err == nil {
@@ -90,12 +99,12 @@ func TestProvidersAddRejectsInvalidBaseURL(t *testing.T) {
 	}
 }
 
-func TestProvidersAddRejectsConfigProvider(t *testing.T) {
+func TestProvidersSaveRejectsConfigProvider(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
 	app.baseCfg.Providers = append(app.baseCfg.Providers, config.ProviderSpec{ID: "cfg-provider", BaseURL: "http://cfg/v1"})
 	app.cfg = app.baseCfg
 
-	_, err := app.providersAdd(context.Background(), requestWithParams(t, "providers_add", providerAddRequest{
+	_, err := app.providersSave(context.Background(), requestWithParams(t, "providers_save", providerSaveRequest{
 		ID: "cfg-provider", BaseURL: "http://elsewhere/v1",
 	}))
 	if err == nil {
@@ -103,59 +112,21 @@ func TestProvidersAddRejectsConfigProvider(t *testing.T) {
 	}
 }
 
-func TestModelsAddAppearsInMergedConfig(t *testing.T) {
+func TestProvidersSaveRejectsModelOwnedElsewhere(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
-	addProvider(t, app, "local", "http://localhost:8000/v1")
-	addModel(t, app, "local", "llama-3")
+	saveProvider(t, app, "one", "http://localhost:8000/v1", "shared-model")
 
-	cfg := app.snapshotConfig()
-	if !hasModel(cfg, "llama-3", "local") {
-		t.Fatalf("merged models = %#v, want llama-3 -> local", cfg.Provider.Models)
-	}
-}
-
-func TestModelsAddRejectsDuplicateModel(t *testing.T) {
-	app := newTestApp(&fakeHistory{})
-	addProvider(t, app, "local", "http://localhost:8000/v1")
-	addModel(t, app, "local", "llama-3")
-
-	_, err := app.modelsAdd(context.Background(), requestWithParams(t, "models_add", modelAddRequest{
-		Provider: "local", ID: "llama-3",
+	_, err := app.providersSave(context.Background(), requestWithParams(t, "providers_save", providerSaveRequest{
+		ID: "two", BaseURL: "http://localhost:9000/v1", Models: []string{"shared-model"},
 	}))
 	if err == nil {
-		t.Fatal("expected error for a duplicate model id")
-	}
-}
-
-func TestModelsAddRejectsUnmanagedProvider(t *testing.T) {
-	app := newTestApp(&fakeHistory{})
-	_, err := app.modelsAdd(context.Background(), requestWithParams(t, "models_add", modelAddRequest{
-		Provider: "openai", ID: "gpt-999",
-	}))
-	if err == nil {
-		t.Fatal("expected error for an unmanaged provider")
-	}
-}
-
-func TestModelsRemoveDeletesModel(t *testing.T) {
-	app := newTestApp(&fakeHistory{})
-	addProvider(t, app, "local", "http://localhost:8000/v1")
-	addModel(t, app, "local", "llama-3")
-
-	if _, err := app.modelsRemove(context.Background(), requestWithParams(t, "models_remove", modelRemoveRequest{ID: "llama-3"})); err != nil {
-		t.Fatalf("modelsRemove returned error: %v", err)
-	}
-
-	cfg := app.snapshotConfig()
-	if hasModel(cfg, "llama-3", "local") {
-		t.Fatal("model not removed")
+		t.Fatal("expected error for a model owned by another provider")
 	}
 }
 
 func TestProvidersRemoveDeletesProviderAndModels(t *testing.T) {
 	app := newTestApp(&fakeHistory{})
-	addProvider(t, app, "local", "http://localhost:8000/v1")
-	addModel(t, app, "local", "llama-3")
+	saveProvider(t, app, "local", "http://localhost:8000/v1", "llama-3")
 
 	if _, err := app.providersRemove(context.Background(), requestWithParams(t, "providers_remove", providerRemoveRequest{ID: "local"})); err != nil {
 		t.Fatalf("providersRemove returned error: %v", err)

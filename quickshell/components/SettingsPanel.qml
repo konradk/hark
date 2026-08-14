@@ -39,12 +39,12 @@ Rectangle {
     property var providersModel: null
     property bool providersBusy: false
     property bool providerAddBusy: false
-    property bool modelsBusy: false
     property bool providerFormVisible: false
     property string editingProviderID: ""
     property string providerFormLabel: ""
     property string providerFormBaseURL: ""
     property string providerFormKey: ""
+    property var providerFormModels: []
 
     readonly property real labelWidth: 180
 
@@ -64,10 +64,8 @@ Rectangle {
     signal xAISecretInputChanged(string text)
     signal xAISecretSaveRequested()
     signal xAISecretDeleteRequested()
-    signal providerSaveRequested(string id, string label, string baseURL, string key)
+    signal providerSaveRequested(string id, string label, string baseURL, string key, var models)
     signal providerRemoveRequested(string id)
-    signal modelAddRequested(string providerId, string modelId)
-    signal modelRemoveRequested(string modelId)
     signal cancelRequested()
 
     function c(name, fallback) {
@@ -94,6 +92,7 @@ Rectangle {
         providerFormLabel = "";
         providerFormBaseURL = "";
         providerFormKey = "";
+        providerFormModels = [];
     }
 
     function beginAddProvider() {
@@ -101,12 +100,33 @@ Rectangle {
         providerFormVisible = true;
     }
 
-    function beginEditProvider(id, label, baseURL) {
+    function beginEditProvider(id, label, baseURL, models) {
         editingProviderID = String(id ?? "");
         providerFormLabel = String(label ?? "");
         providerFormBaseURL = String(baseURL ?? "");
         providerFormKey = "";
+        providerFormModels = Array.isArray(models) ? models.map(model => String(model.id ?? "")) : [];
         providerFormVisible = true;
+    }
+
+    function addFormModel(id) {
+        const trimmed = String(id).trim();
+        if (trimmed.length === 0 || providerFormModels.indexOf(trimmed) >= 0)
+            return ;
+
+        providerFormModels = providerFormModels.concat([trimmed]);
+    }
+
+    function removeFormModel(id) {
+        providerFormModels = providerFormModels.filter(model => model !== id);
+    }
+
+    function addFormModelFromInput() {
+        if (providerModelInputField.text.trim().length === 0)
+            return ;
+
+        addFormModel(providerModelInputField.text);
+        providerModelInputField.text = "";
     }
 
     function beginShortcutRecording(action) {
@@ -319,13 +339,11 @@ Rectangle {
                 label: String(model.label ?? model.id ?? "")
                 baseUrl: String(model.baseUrl ?? "")
                 models: model.models ?? []
-                busy: panel.providersBusy || panel.modelsBusy
+                busy: panel.providersBusy
                 theme: panel.theme
                 fontFamily: panel.fontFamily
-                onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl)
+                onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl, model.models)
                 onRemoveRequested: panel.providerRemoveRequested(String(model.id ?? ""))
-                onModelAddRequested: modelId => panel.modelAddRequested(String(model.id ?? ""), modelId)
-                onModelRemoveRequested: modelId => panel.modelRemoveRequested(modelId)
             }
         }
 
@@ -484,6 +502,115 @@ Rectangle {
 
             Item {
                 width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Models"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: addFormModelButton.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerModelInputField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerModelInputField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        Keys.onReturnPressed: panel.addFormModelFromInput()
+                        Keys.onEnterPressed: panel.addFormModelFromInput()
+                    }
+                }
+
+                PaletteButton {
+                    id: addFormModelButton
+
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Add model"
+                    tooltipText: "Add this model id to the provider"
+                    theme: panel.theme
+                    filled: true
+                    primary: providerModelInputField.text.trim().length > 0
+                    enabled: providerModelInputField.text.trim().length > 0 && !panel.providerAddBusy
+                    onClicked: panel.addFormModelFromInput()
+                }
+            }
+
+            Flow {
+                width: parent.width
+                spacing: 4
+                leftPadding: panel.labelWidth + 8
+                visible: panel.providerFormModels.length > 0
+
+                Repeater {
+                    model: panel.providerFormModels
+
+                    delegate: Rectangle {
+                        height: 22
+                        width: formModelRow.implicitWidth + 20
+                        radius: panel.cornerRadius(5)
+                        color: panel.c("surface_elevated", "#1b1f28")
+                        border.width: 1
+                        border.color: panel.c("panel_border", "#2b303b")
+
+                        Row {
+                            id: formModelRow
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 8
+                            spacing: 6
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: String(modelData)
+                                color: panel.c("text", "#d3d8e2")
+                                font.family: panel.fontFamily
+                                font.pixelSize: panel.fontSize("body_small", 11)
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "\u00d7"
+                                color: panel.c("text_muted", "#8a93a3")
+                                font.family: panel.fontFamily
+                                font.pixelSize: panel.fontSize("body_small", 12)
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    anchors.margins: -6
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: panel.removeFormModel(String(modelData))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
                 height: 34
 
                 PaletteButton {
@@ -495,7 +622,7 @@ Rectangle {
                     filled: true
                     primary: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0
                     enabled: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && !panel.providerAddBusy
-                    onClicked: panel.providerSaveRequested(panel.editingProviderID, panel.providerFormLabel, panel.providerFormBaseURL, panel.providerFormKey)
+                    onClicked: panel.providerSaveRequested(panel.editingProviderID, panel.providerFormLabel, panel.providerFormBaseURL, panel.providerFormKey, panel.providerFormModels)
                 }
             }
         }

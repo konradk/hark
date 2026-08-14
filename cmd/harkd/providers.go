@@ -118,23 +118,14 @@ type providerListEntry struct {
 	Models  []providerListModel `json:"models"`
 }
 
-type providerAddRequest struct {
-	ID      string `json:"id"`
-	Label   string `json:"label"`
-	BaseURL string `json:"base_url"`
+type providerSaveRequest struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	BaseURL string   `json:"base_url"`
+	Models  []string `json:"models"`
 }
 
 type providerRemoveRequest struct {
-	ID string `json:"id"`
-}
-
-type modelAddRequest struct {
-	Provider string `json:"provider"`
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-}
-
-type modelRemoveRequest struct {
 	ID string `json:"id"`
 }
 
@@ -174,9 +165,9 @@ func (a *appState) providersList(ctx context.Context, req ipc.Request) (any, err
 	return entries, nil
 }
 
-func (a *appState) providersAdd(ctx context.Context, req ipc.Request) (any, error) {
-	var request providerAddRequest
-	if err := decodeParams(req, "providers_add", &request); err != nil {
+func (a *appState) providersSave(ctx context.Context, req ipc.Request) (any, error) {
+	var request providerSaveRequest
+	if err := decodeParams(req, "providers_save", &request); err != nil {
 		return nil, err
 	}
 
@@ -199,21 +190,69 @@ func (a *appState) providersAdd(ctx context.Context, req ipc.Request) (any, erro
 	// A config.lua provider is authoritative and cannot be overridden here.
 	cfg := a.snapshotConfig()
 	for _, spec := range cfg.Providers {
-		if spec.ID == id {
-			if !a.isManagedProvider(ctx, id) {
-				return nil, fmt.Errorf("provider %q is defined in config.lua and cannot be edited here", id)
-			}
-			break
+		if spec.ID == id && !a.isManagedProvider(ctx, id) {
+			return nil, fmt.Errorf("provider %q is defined in config.lua and cannot be edited here", id)
 		}
+	}
+
+	desired := make(map[string]struct{}, len(request.Models))
+	for _, raw := range request.Models {
+		modelID := strings.TrimSpace(raw)
+		if modelID == "" || len(modelID) > 128 {
+			return nil, errors.New("model id must contain 1 to 128 bytes")
+		}
+		if _, exists := desired[modelID]; exists {
+			continue
+		}
+		// A model id must not belong to another provider (stored or config.lua).
+		if modelOwnedElsewhere(cfg, modelID, id) {
+			return nil, fmt.Errorf("model %q already exists", modelID)
+		}
+		desired[modelID] = struct{}{}
 	}
 
 	if err := a.history.UpsertProvider(ctx, history.Provider{ID: id, Label: label, BaseURL: baseURL}); err != nil {
 		return nil, err
 	}
+
+	stored, err := a.history.ListModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	current := make(map[string]struct{}, len(stored))
+	for _, model := range stored {
+		if model.Provider == id {
+			current[model.ID] = struct{}{}
+		}
+	}
+	for modelID := range current {
+		if _, keep := desired[modelID]; !keep {
+			if err := a.history.DeleteModel(ctx, modelID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for modelID := range desired {
+		if _, exists := current[modelID]; !exists {
+			if err := a.history.UpsertModel(ctx, history.Model{ID: modelID, Label: modelID, Provider: id}); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if err := a.reload(ctx); err != nil {
 		return nil, err
 	}
 	return map[string]any{"saved": true}, nil
+}
+
+func modelOwnedElsewhere(cfg config.Config, modelID, providerID string) bool {
+	for _, model := range cfg.Provider.Models {
+		if model.ID == modelID && model.Provider != providerID {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *appState) isManagedProvider(ctx context.Context, id string) bool {
@@ -242,60 +281,6 @@ func (a *appState) providersRemove(ctx context.Context, req ipc.Request) (any, e
 		return nil, fmt.Errorf("provider %q is not managed from the panel", id)
 	}
 	if err := a.history.DeleteProvider(ctx, id); err != nil {
-		return nil, err
-	}
-	if err := a.reload(ctx); err != nil {
-		return nil, err
-	}
-	return map[string]any{"removed": true}, nil
-}
-
-func (a *appState) modelsAdd(ctx context.Context, req ipc.Request) (any, error) {
-	var request modelAddRequest
-	if err := decodeParams(req, "models_add", &request); err != nil {
-		return nil, err
-	}
-
-	provider := strings.ToLower(strings.TrimSpace(request.Provider))
-	if !a.isManagedProvider(ctx, provider) {
-		return nil, fmt.Errorf("provider %q is not managed from the panel", provider)
-	}
-	id := strings.TrimSpace(request.ID)
-	if id == "" || len(id) > 128 {
-		return nil, errors.New("model id must contain 1 to 128 bytes")
-	}
-	label := strings.TrimSpace(request.Label)
-	if label == "" {
-		label = id
-	}
-
-	cfg := a.snapshotConfig()
-	for _, model := range cfg.Provider.Models {
-		if model.ID == id {
-			return nil, fmt.Errorf("model %q already exists", id)
-		}
-	}
-
-	if err := a.history.UpsertModel(ctx, history.Model{ID: id, Label: label, Provider: provider}); err != nil {
-		return nil, err
-	}
-	if err := a.reload(ctx); err != nil {
-		_ = a.history.DeleteModel(ctx, id)
-		return nil, err
-	}
-	return map[string]any{"added": true}, nil
-}
-
-func (a *appState) modelsRemove(ctx context.Context, req ipc.Request) (any, error) {
-	var request modelRemoveRequest
-	if err := decodeParams(req, "models_remove", &request); err != nil {
-		return nil, err
-	}
-	id := strings.TrimSpace(request.ID)
-	if id == "" {
-		return nil, errors.New("model id must not be empty")
-	}
-	if err := a.history.DeleteModel(ctx, id); err != nil {
 		return nil, err
 	}
 	if err := a.reload(ctx); err != nil {

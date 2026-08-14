@@ -13,10 +13,6 @@ Item {
 
     signal editRequested()
     signal removeRequested()
-    signal modelAddRequested(string modelId)
-    signal modelRemoveRequested(string modelId)
-
-    property string modelInput: ""
 
     function c(name, fallback) {
         return theme && theme[name] ? theme[name] : fallback;
@@ -93,88 +89,22 @@ Item {
                 model: control.models
 
                 delegate: Rectangle {
-                    height: 22
-                    width: modelRow.implicitWidth + 20
+                    height: 20
+                    width: modelChipText.implicitWidth + 16
                     radius: control.cornerRadius(5)
                     color: control.c("surface_elevated", "#1b1f28")
                     border.width: 1
                     border.color: control.c("panel_border", "#2b303b")
 
-                    Row {
-                        id: modelRow
+                    Text {
+                        id: modelChipText
 
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 8
-                        spacing: 6
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: String(modelData.id ?? "")
-                            color: control.c("text", "#d3d8e2")
-                            font.family: control.fontFamily
-                            font.pixelSize: control.fontSize("body_small", 11)
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "\u00d7"
-                            color: control.c("text_muted", "#8a93a3")
-                            font.family: control.fontFamily
-                            font.pixelSize: control.fontSize("body_small", 12)
-
-                            MouseArea {
-                                anchors.fill: parent
-                                anchors.margins: -6
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: control.modelRemoveRequested(String(modelData.id ?? ""))
-                            }
-                        }
+                        anchors.centerIn: parent
+                        text: String(modelData.id ?? "")
+                        color: control.c("text", "#d3d8e2")
+                        font.family: control.fontFamily
+                        font.pixelSize: control.fontSize("body_small", 11)
                     }
-                }
-            }
-        }
-
-        Row {
-            width: parent.width
-            spacing: 6
-
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(120, parent.width - 84 - 6)
-                height: 26
-                radius: control.cornerRadius(6)
-                color: control.c("input", "#0d1016")
-                border.width: 1
-                border.color: modelIdField.activeFocus ? control.c("primary", "#a7c7ff") : control.c("panel_border", "#2b303b")
-
-                TextInput {
-                    id: modelIdField
-
-                    anchors.fill: parent
-                    anchors.leftMargin: 8
-                    anchors.rightMargin: 8
-                    text: control.modelInput
-                    color: control.c("text_strong", "#f2f4f8")
-                    font.family: control.fontFamily
-                    font.pixelSize: control.fontSize("body_small", 11)
-                    verticalAlignment: TextInput.AlignVCenter
-                    clip: true
-                    onTextChanged: control.modelInput = text
-                }
-            }
-
-            PaletteButton {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Add model"
-                tooltipText: "Add this model id to the provider"
-                theme: control.theme
-                filled: true
-                primary: control.modelInput.trim().length > 0
-                enabled: control.modelInput.trim().length > 0 && !control.busy
-                onClicked: {
-                    control.modelAddRequested(control.modelInput.trim());
-                    control.modelInput = "";
                 }
             }
         }

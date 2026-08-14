@@ -25,13 +25,13 @@ type providerEntry struct {
 
 func providerCommand(ctx context.Context, socketPath string, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: harkctl provider [list | add | remove]")
+		return errors.New("usage: harkctl provider [list | save | remove]")
 	}
 	switch args[0] {
 	case "list":
 		return providerList(ctx, socketPath, args[1:])
-	case "add":
-		return providerAdd(ctx, socketPath, args[1:])
+	case "save":
+		return providerSave(ctx, socketPath, args[1:])
 	case "remove":
 		return providerRemove(ctx, socketPath, args[1:])
 	default:
@@ -43,23 +43,25 @@ func providerList(ctx context.Context, socketPath string, args []string) error {
 	return printIPCList(ctx, socketPath, "provider list", "providers_list", args, &[]providerEntry{})
 }
 
-func providerAdd(ctx context.Context, socketPath string, args []string) error {
-	flags := flag.NewFlagSet("provider add", flag.ContinueOnError)
+func providerSave(ctx context.Context, socketPath string, args []string) error {
+	flags := flag.NewFlagSet("provider save", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	compactJSON := flags.Bool("json", false, "write compact JSON")
 	id := flags.String("id", "", "provider id (a-z, 0-9, '.', '_' or '-')")
 	label := flags.String("label", "", "display label")
 	baseURL := flags.String("base-url", "", "absolute http(s) base URL")
+	models := multiFlag{}
+	flags.Var(&models, "model", "model id; may be repeated")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || *id == "" || *baseURL == "" {
-		return errors.New("usage: harkctl provider add --json --id ID --label LABEL --base-url URL")
+		return errors.New("usage: harkctl provider save --json --id ID --label LABEL --base-url URL [--model MODEL_ID ...]")
 	}
 
-	params := map[string]string{"id": *id, "label": *label, "base_url": *baseURL}
+	params := map[string]any{"id": *id, "label": *label, "base_url": *baseURL, "models": models}
 	var response map[string]any
-	if err := ipc.Call(ctx, socketPath, "providers_add", params, &response); err != nil {
+	if err := ipc.Call(ctx, socketPath, "providers_save", params, &response); err != nil {
 		return fmt.Errorf("save provider: %w", err)
 	}
 	return printResultJSON(*compactJSON, response, "provider saved")
