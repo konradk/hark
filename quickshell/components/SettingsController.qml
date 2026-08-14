@@ -302,13 +302,13 @@ QtObject {
             providersModel.clear();
             for (const provider of providers) {
                 const models = Array.isArray(provider.models)
-                    ? provider.models.map(model => ({ "id": String(model.id ?? ""), "label": String(model.label ?? model.id ?? "") }))
+                    ? provider.models.map(model => String(model.id ?? ""))
                     : [];
                 providersModel.append({
                     "id": String(provider.id ?? ""),
                     "label": String(provider.label ?? provider.id ?? ""),
                     "baseUrl": String(provider.base_url ?? ""),
-                    "models": models
+                    "modelsJson": JSON.stringify(models)
                 });
             }
         } catch (error) {

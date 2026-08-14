@@ -100,7 +100,7 @@ Item {
                         id: modelChipText
 
                         anchors.centerIn: parent
-                        text: String(modelData.id ?? "")
+                        text: String(modelData ?? "")
                         color: control.c("text", "#d3d8e2")
                         font.family: control.fontFamily
                         font.pixelSize: control.fontSize("body_small", 11)

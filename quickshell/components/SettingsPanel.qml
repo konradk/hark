@@ -105,7 +105,7 @@ Rectangle {
         providerFormLabel = String(label ?? "");
         providerFormBaseURL = String(baseURL ?? "");
         providerFormKey = "";
-        providerFormModels = Array.isArray(models) ? models.map(model => String(model.id ?? "")) : [];
+        providerFormModels = Array.isArray(models) ? models.map(model => String(model)) : [];
         providerFormVisible = true;
     }
 
@@ -338,11 +338,11 @@ Rectangle {
                 providerId: String(model.id ?? "")
                 label: String(model.label ?? model.id ?? "")
                 baseUrl: String(model.baseUrl ?? "")
-                models: model.models ?? []
+                models: JSON.parse(String(model.modelsJson ?? "[]"))
                 busy: panel.providersBusy
                 theme: panel.theme
                 fontFamily: panel.fontFamily
-                onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl, model.models)
+                onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl, JSON.parse(String(model.modelsJson ?? "[]")))
                 onRemoveRequested: panel.providerRemoveRequested(String(model.id ?? ""))
             }
         }
