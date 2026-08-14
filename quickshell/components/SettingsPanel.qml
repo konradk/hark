@@ -39,10 +39,14 @@ Rectangle {
     property var providersModel: null
     property bool providersBusy: false
     property bool providerAddBusy: false
+    property bool modelsBusy: false
+    property bool fetchBusy: false
+    property string fetchedProviderID: ""
+    property var fetchedModels: []
     property bool providerFormVisible: false
+    property string editingProviderID: ""
     property string providerFormLabel: ""
     property string providerFormBaseURL: ""
-    property string providerFormModel: ""
     property string providerFormKey: ""
 
     readonly property real labelWidth: 180
@@ -63,8 +67,11 @@ Rectangle {
     signal xAISecretInputChanged(string text)
     signal xAISecretSaveRequested()
     signal xAISecretDeleteRequested()
-    signal providerAddRequested(string label, string baseURL, string model, string key)
+    signal providerSaveRequested(string id, string label, string baseURL, string key)
     signal providerRemoveRequested(string id)
+    signal modelAddRequested(string providerId, string modelId)
+    signal modelRemoveRequested(string modelId)
+    signal fetchRequested(string providerId)
     signal cancelRequested()
 
     function c(name, fallback) {
@@ -87,10 +94,23 @@ Rectangle {
 
     function resetProviderForm() {
         providerFormVisible = false;
+        editingProviderID = "";
         providerFormLabel = "";
         providerFormBaseURL = "";
-        providerFormModel = "";
         providerFormKey = "";
+    }
+
+    function beginAddProvider() {
+        resetProviderForm();
+        providerFormVisible = true;
+    }
+
+    function beginEditProvider(id, label, baseURL) {
+        editingProviderID = String(id ?? "");
+        providerFormLabel = String(label ?? "");
+        providerFormBaseURL = String(baseURL ?? "");
+        providerFormKey = "";
+        providerFormVisible = true;
     }
 
     function beginShortcutRecording(action) {
@@ -297,52 +317,23 @@ Rectangle {
         Repeater {
             model: panel.providersModel
 
-            delegate: Item {
+            delegate: ProviderRow {
                 width: parent.width
-                height: 34
-
-                Column {
-                    anchors.left: parent.left
-                    anchors.right: providerRemoveButton.left
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 0
-
-                    Text {
-                        width: parent.width
-                        text: String(model.label ?? model.id ?? "")
-                        color: panel.c("text", "#d3d8e2")
-                        font.family: panel.fontFamily
-                        font.pixelSize: panel.fontSize("subtitle", 13)
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        width: parent.width
-                        text: {
-                            const base = String(model.baseUrl ?? "");
-                            const models = String(model.models ?? "");
-                            return models.length > 0 ? base + "  ·  " + models : base;
-                        }
-                        color: panel.c("text_muted", "#8a93a3")
-                        font.family: panel.fontFamily
-                        font.pixelSize: panel.fontSize("body_small", 11)
-                        elide: Text.ElideRight
-                    }
-                }
-
-                PaletteButton {
-                    id: providerRemoveButton
-
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Remove"
-                    tooltipText: "Remove this provider and its model"
-                    danger: true
-                    theme: panel.theme
-                    enabled: !panel.providersBusy
-                    onClicked: panel.providerRemoveRequested(String(model.id ?? ""))
-                }
+                providerId: String(model.id ?? "")
+                label: String(model.label ?? model.id ?? "")
+                baseUrl: String(model.baseUrl ?? "")
+                models: model.models ?? []
+                busy: panel.providersBusy || panel.modelsBusy
+                fetchBusy: panel.fetchBusy
+                fetched: panel.fetchedProviderID === String(model.id ?? "")
+                fetchedModels: panel.fetchedModels
+                theme: panel.theme
+                fontFamily: panel.fontFamily
+                onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl)
+                onRemoveRequested: panel.providerRemoveRequested(String(model.id ?? ""))
+                onModelAddRequested: modelId => panel.modelAddRequested(String(model.id ?? ""), modelId)
+                onModelRemoveRequested: modelId => panel.modelRemoveRequested(modelId)
+                onFetchRequested: panel.fetchRequested(String(model.id ?? ""))
             }
         }
 
@@ -362,7 +353,7 @@ Rectangle {
                     if (panel.providerFormVisible)
                         panel.resetProviderForm();
                     else
-                        panel.providerFormVisible = true;
+                        panel.beginAddProvider();
                 }
             }
         }
@@ -464,48 +455,6 @@ Rectangle {
                     width: panel.labelWidth
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Model ID"
-                    color: panel.c("text", "#d3d8e2")
-                    font.family: panel.fontFamily
-                    font.pixelSize: panel.fontSize("subtitle", 13)
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.leftMargin: panel.labelWidth + 8
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 30
-                    radius: panel.cornerRadius(7)
-                    color: panel.c("input", "#0d1016")
-                    border.width: 1
-                    border.color: providerModelField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
-
-                    TextInput {
-                        id: providerModelField
-
-                        anchors.fill: parent
-                        anchors.leftMargin: 10
-                        anchors.rightMargin: 10
-                        text: panel.providerFormModel
-                        color: panel.c("text_strong", "#f2f4f8")
-                        font.family: panel.fontFamily
-                        font.pixelSize: panel.fontSize("subtitle", 13)
-                        verticalAlignment: TextInput.AlignVCenter
-                        clip: true
-                        onTextChanged: panel.providerFormModel = text
-                    }
-                }
-            }
-
-            Item {
-                width: parent.width
-                height: 32
-
-                Text {
-                    width: panel.labelWidth
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
                     text: "API key"
                     color: panel.c("text", "#d3d8e2")
                     font.family: panel.fontFamily
@@ -548,13 +497,13 @@ Rectangle {
                 PaletteButton {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: panel.providerAddBusy ? "Adding" : "Add"
-                    tooltipText: "Add this provider"
+                    text: panel.providerAddBusy ? "Saving" : (panel.editingProviderID.length > 0 ? "Save" : "Add")
+                    tooltipText: panel.editingProviderID.length > 0 ? "Save this provider" : "Add this provider"
                     theme: panel.theme
                     filled: true
-                    primary: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && panel.providerFormModel.trim().length > 0
-                    enabled: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && panel.providerFormModel.trim().length > 0 && !panel.providerAddBusy
-                    onClicked: panel.providerAddRequested(panel.providerFormLabel, panel.providerFormBaseURL, panel.providerFormModel, panel.providerFormKey)
+                    primary: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0
+                    enabled: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && !panel.providerAddBusy
+                    onClicked: panel.providerSaveRequested(panel.editingProviderID, panel.providerFormLabel, panel.providerFormBaseURL, panel.providerFormKey)
                 }
             }
         }

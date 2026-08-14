@@ -19,6 +19,8 @@ QtObject {
     property var providersModel: ListModel {
     }
 
+    property var fetchedModels: []
+    property string fetchedProviderID: ""
     property string pendingProviderID: ""
     property string pendingProviderKey: ""
 
@@ -54,6 +56,8 @@ QtObject {
     readonly property bool shortcutBusy: shortcutSetProcess.running
     readonly property bool providersBusy: providersListProcess.running || providerAddProcess.running || providerRemoveProcess.running
     readonly property bool providerAddBusy: providerAddProcess.running || providerSecretProcess.running
+    readonly property bool modelsBusy: modelAddProcess.running || modelRemoveProcess.running
+    readonly property bool fetchBusy: fetchModelsProcess.running
     readonly property bool secretStatusBusy: openAISecret.statusBusy || openRouterSecret.statusBusy || xAISecret.statusBusy
     readonly property bool secretSaveBusy: openAISecret.saveBusy
     readonly property bool secretDeleteBusy: openAISecret.deleteBusy
@@ -301,16 +305,30 @@ QtObject {
             const providers = JSON.parse(line);
             providersModel.clear();
             for (const provider of providers) {
-                const modelLabels = Array.isArray(provider.models) ? provider.models.map(model => String(model.label ?? model.id)).join(", ") : "";
+                const models = Array.isArray(provider.models)
+                    ? provider.models.map(model => ({ "id": String(model.id ?? ""), "label": String(model.label ?? model.id ?? "") }))
+                    : [];
                 providersModel.append({
                     "id": String(provider.id ?? ""),
                     "label": String(provider.label ?? provider.id ?? ""),
                     "baseUrl": String(provider.base_url ?? ""),
-                    "models": modelLabels
+                    "models": models
                 });
             }
         } catch (error) {
             app.statusText = "Provider list parse failed";
+        }
+    }
+
+    function handleFetchedModels(line) {
+        if (line.length === 0)
+            return ;
+
+        try {
+            const result = JSON.parse(line);
+            fetchedModels = Array.isArray(result.models) ? result.models.map(id => String(id)) : [];
+        } catch (error) {
+            app.statusText = "Model list parse failed";
         }
     }
 
@@ -319,14 +337,14 @@ QtObject {
         return slug.length > 0 ? slug : "provider";
     }
 
-    function addProvider(label, baseURL, model, apiKey) {
+    function addProvider(id, label, baseURL, apiKey) {
         if (providerAddProcess.running)
             return ;
 
-        pendingProviderID = providerIDFromLabel(label);
+        pendingProviderID = String(id).trim().length > 0 ? String(id).trim().toLowerCase() : providerIDFromLabel(label);
         pendingProviderKey = String(apiKey).trim();
-        app.statusText = "Adding provider...";
-        providerAddProcess.exec([harkctlPath, "provider", "add", "--json", "--id", pendingProviderID, "--label", String(label).trim(), "--base-url", String(baseURL).trim(), "--model", String(model).trim()]);
+        app.statusText = "Saving provider...";
+        providerAddProcess.exec([harkctlPath, "provider", "add", "--json", "--id", pendingProviderID, "--label", String(label).trim(), "--base-url", String(baseURL).trim()]);
     }
 
     function removeProvider(id) {
@@ -335,6 +353,38 @@ QtObject {
 
         app.statusText = "Removing provider...";
         providerRemoveProcess.exec([harkctlPath, "provider", "remove", "--json", "--id", id]);
+    }
+
+    function addModel(providerID, modelID) {
+        if (modelAddProcess.running)
+            return ;
+
+        app.statusText = "Adding model...";
+        modelAddProcess.exec([harkctlPath, "model", "add", "--json", "--provider", providerID, "--id", String(modelID).trim()]);
+    }
+
+    function removeModel(modelID) {
+        if (modelRemoveProcess.running)
+            return ;
+
+        app.statusText = "Removing model...";
+        modelRemoveProcess.exec([harkctlPath, "model", "remove", "--json", "--id", modelID]);
+    }
+
+    function fetchProviderModels(providerID) {
+        if (fetchModelsProcess.running)
+            return ;
+
+        fetchedProviderID = providerID;
+        fetchedModels = [];
+        app.statusText = "Fetching models...";
+        fetchModelsProcess.exec([harkctlPath, "provider", "fetch-models", "--json", "--provider", providerID]);
+    }
+
+    function refreshAfterModelChange(successText) {
+        app.statusText = successText;
+        loadProviders();
+        loadModels();
     }
 
     function finishProviderChange(successText) {
@@ -800,7 +850,7 @@ QtObject {
                     providerSecretProcess.exec([harkctlPath, "secret", "set", "--stdin", root.pendingProviderID]);
                     return ;
                 }
-                root.finishProviderChange("Provider added");
+                root.finishProviderChange("Provider saved");
                 return ;
             }
             root.pendingProviderID = "";
@@ -826,7 +876,7 @@ QtObject {
         }
         onExited: (exitCode) => {
             stdinEnabled = true;
-            root.finishProviderChange(exitCode === 0 ? "Provider added" : "Provider added, but key save failed");
+            root.finishProviderChange(exitCode === 0 ? "Provider saved" : "Provider saved, but key save failed");
         }
 
         stderr: SplitParser {
@@ -846,6 +896,67 @@ QtObject {
                 return ;
             }
             root.loadProviders();
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process modelAddProcess: Process {
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                root.refreshAfterModelChange("Model added");
+                return ;
+            }
+            root.loadProviders();
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process modelRemoveProcess: Process {
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                root.refreshAfterModelChange("Model removed");
+                return ;
+            }
+            root.loadProviders();
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process fetchModelsProcess: Process {
+        stdout: SplitParser {
+            onRead: (line) => {
+                return root.handleFetchedModels(line);
+            }
+        }
+
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                root.app.statusText = root.fetchedModels.length > 0 ? (root.fetchedModels.length + " models found") : "No models returned";
+            }
         }
 
         stderr: SplitParser {

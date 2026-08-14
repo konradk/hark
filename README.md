@@ -526,16 +526,26 @@ hosted proxies). They do not request Hark's web-search plugin, so a provider's
 own web-search behavior applies. Provider ids must be unique and must not
 reuse `openai`, `openrouter`, or `xai`.
 
-You can also add and remove providers from Hark Settings (`Ctrl+,`) without
-touching the config file. The **Providers** section lists every panel-managed
-provider (with its base URL, model, and API key) and offers an **Add provider**
-form. Providers created this way are stored by the daemon and merged with the
-ones in `config.lua`; config-file entries take precedence on ID collisions.
-The same operations are available on the CLI:
+You can also manage providers from Hark Settings (`Ctrl+,`) without touching
+the config file. The **Providers** section lists every panel-managed provider
+and lets you:
+
+- **Add** or **edit** a provider (name, base URL, and API key).
+- Attach **multiple models** to one provider; each model uses its endpoint
+  model id as its name, so there is nothing extra to name.
+- **Fetch** the models an endpoint exposes (`GET {base_url}/models`) and add
+  them with one click.
+
+Providers created this way are stored by the daemon and merged with the ones
+in `config.lua`; config-file entries take precedence on ID collisions. The
+same operations are available on the CLI:
 
 ```bash
 harkctl provider list --json
-harkctl provider add --json --id local --label "Local vLLM" --base-url http://localhost:8000/v1 --model llama-3
+harkctl provider add --json --id local --label "Local vLLM" --base-url http://localhost:8000/v1
+harkctl provider fetch-models --json --provider local
+harkctl model add --json --provider local --id llama-3.1-8b
+harkctl model remove --json --id llama-3.1-8b
 harkctl provider remove --json --id local
 ```
 

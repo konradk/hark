@@ -66,6 +66,12 @@ func newIPCServer(app *appState, metadata serverMetadata) ipc.Server {
 				return app.providersAdd(ctx, req)
 			case "providers_remove":
 				return app.providersRemove(ctx, req)
+			case "providers_fetch_models":
+				return app.providersFetchModels(ctx, req)
+			case "models_add":
+				return app.modelsAdd(ctx, req)
+			case "models_remove":
+				return app.modelsRemove(ctx, req)
 			case "copy_latest":
 				return app.copyLatestRequest(ctx, req)
 			case "copy_text":
