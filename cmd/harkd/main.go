@@ -12,6 +12,7 @@ import (
 
 	"hark/internal/ai"
 	"hark/internal/ai/openai"
+	"hark/internal/ai/openai_compatible"
 	"hark/internal/ai/openrouter"
 	"hark/internal/ai/xai"
 	"hark/internal/buildinfo"
@@ -76,6 +77,12 @@ func main() {
 			key, _, err := secrets.ProviderAPIKey(xai.ProviderName)
 			return key, err
 		}),
+	}
+	for _, spec := range cfg.Providers {
+		providers[spec.ID] = openai_compatible.New(spec.Label, spec.BaseURL, func() (string, error) {
+			key, _, err := secrets.ProviderAPIKey(spec.ID)
+			return key, err
+		})
 	}
 
 	app := &appState{

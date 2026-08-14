@@ -471,6 +471,10 @@ return {
     },
   },
 
+  providers = {
+    { id = "local", label = "Local vLLM", base_url = "http://localhost:8000/v1" },
+  },
+
   paste = {
     restore_focus = true,
     delay_ms = 80,
@@ -482,6 +486,45 @@ return {
 Each model owns its `reasoning_efforts` capability list. `auto` is Hark's
 provider-default option; the remaining values are sent to the provider API.
 When adding a custom model, set this list to the efforts that model accepts.
+
+### Custom OpenAI-compatible providers
+
+The `providers` table defines additional providers that speak the standard
+OpenAI Chat Completions API at a configurable base URL. Each entry takes an
+`id` (referenced from `provider.models`), an optional `label` (shown in the
+model picker), and a `base_url` (an absolute `http` or `https` URL). Model
+entries that name a custom provider id are routed through that base URL:
+
+```lua
+return {
+  providers = {
+    { id = "local", label = "Local vLLM", base_url = "http://localhost:8000/v1" },
+    { id = "corp-gw", base_url = "https://llm.example.com/v1" },
+  },
+  provider = {
+    default_model = "llama-3",
+    models = {
+      { id = "llama-3", label = "Llama 3", provider = "local", reasoning_efforts = { "auto", "low", "medium", "high" } },
+    },
+  },
+}
+```
+
+The API key for a custom provider is resolved like the built-in ones, from the
+desktop Secret Service keyring under the provider id or, failing that, an
+`<ID>_API_KEY` environment variable (for example `LOCAL_API_KEY` for `local`,
+`CORP_GW_API_KEY` for `corp-gw`):
+
+```bash
+harkctl secret set local
+printf '%s' "$LOCAL_API_KEY" | harkctl secret set --stdin local
+```
+
+Custom providers use the Chat Completions endpoint, so they work with any
+OpenAI-compatible server (Ollama, LM Studio, vLLM, local gateways, and most
+hosted proxies). They do not request Hark's web-search plugin, so a provider's
+own web-search behavior applies. Provider ids must be unique and must not
+reuse `openai`, `openrouter`, or `xai`.
 
 ## Releases
 

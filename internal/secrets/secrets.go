@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	keyring "github.com/zalando/go-keyring"
@@ -90,16 +91,19 @@ func DeleteProviderAPIKey(provider string) error {
 	return nil
 }
 
+// providerNamePattern bounds provider names to a safe keyring-key shape. It
+// allows the built-in providers plus user-defined OpenAI-compatible providers.
+var providerNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
 func normalizeProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
-	switch provider {
-	case "openai", "openrouter", "xai":
-		return provider, nil
-	case "":
+	if provider == "" {
 		return "", errors.New("provider must not be empty")
-	default:
-		return "", fmt.Errorf("unsupported secret provider %q", provider)
 	}
+	if !providerNamePattern.MatchString(provider) {
+		return "", fmt.Errorf("provider %q must match %q", provider, providerNamePattern.String())
+	}
+	return provider, nil
 }
 
 func keyName(provider string) string {
@@ -115,6 +119,7 @@ func envAPIKey(provider string) string {
 	case "xai":
 		return strings.TrimSpace(os.Getenv("XAI_API_KEY"))
 	default:
-		return ""
+		name := strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(provider)) + "_API_KEY"
+		return strings.TrimSpace(os.Getenv(name))
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +19,10 @@ import (
 var configEvalTimeout = 2 * time.Second
 
 type Config struct {
-	UI       UIConfig
-	Provider ProviderConfig
-	Paste    PasteConfig
+	UI        UIConfig
+	Provider  ProviderConfig
+	Providers []ProviderSpec
+	Paste     PasteConfig
 }
 
 type UIConfig struct {
@@ -57,11 +59,31 @@ type ModelConfig struct {
 	ReasoningEfforts []string `json:"reasoning_efforts"`
 }
 
+// ProviderSpec describes a user-defined OpenAI-compatible provider. Its model
+// entries reference it by ID and the daemon talks to its base URL using the
+// standard OpenAI Chat Completions API.
+type ProviderSpec struct {
+	ID      string
+	Label   string
+	BaseURL string
+}
+
 const (
 	ProviderOpenAI     = "openai"
 	ProviderOpenRouter = "openrouter"
 	ProviderXAI        = "xai"
 )
+
+// isBuiltinProvider reports whether name is one of the providers shipped with
+// Hark, as opposed to a user-defined OpenAI-compatible provider.
+func isBuiltinProvider(name string) bool {
+	switch name {
+	case ProviderOpenAI, ProviderOpenRouter, ProviderXAI:
+		return true
+	default:
+		return false
+	}
+}
 
 type PasteConfig struct {
 	RestoreFocus bool
@@ -196,6 +218,23 @@ func Validate(cfg Config) error {
 	if len(cfg.Provider.Models) == 0 {
 		return errors.New("provider.models must contain at least one model")
 	}
+	seenProviders := make(map[string]struct{}, len(cfg.Providers))
+	for _, provider := range cfg.Providers {
+		if provider.ID == "" {
+			return errors.New("providers entries must have an id")
+		}
+		if isBuiltinProvider(provider.ID) {
+			return fmt.Errorf("providers entry %q conflicts with a built-in provider", provider.ID)
+		}
+		if _, exists := seenProviders[provider.ID]; exists {
+			return fmt.Errorf("providers contains duplicate id %q", provider.ID)
+		}
+		seenProviders[provider.ID] = struct{}{}
+		baseURL, err := url.Parse(provider.BaseURL)
+		if err != nil || (baseURL.Scheme != "https" && baseURL.Scheme != "http") || baseURL.Host == "" {
+			return fmt.Errorf("providers entry %q base_url must be an absolute http or https URL", provider.ID)
+		}
+	}
 	defaultModelFound := false
 	var defaultModel ModelConfig
 	seenModels := make(map[string]struct{}, len(cfg.Provider.Models))
@@ -207,10 +246,10 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("provider.models contains duplicate id %q", model.ID)
 		}
 		seenModels[model.ID] = struct{}{}
-		switch model.Provider {
-		case "", ProviderOpenAI, ProviderOpenRouter, ProviderXAI:
-		default:
-			return fmt.Errorf("provider.models entry %q has unsupported provider %q", model.ID, model.Provider)
+		if model.Provider != "" && !isBuiltinProvider(model.Provider) {
+			if _, ok := seenProviders[model.Provider]; !ok {
+				return fmt.Errorf("provider.models entry %q has unsupported provider %q", model.ID, model.Provider)
+			}
 		}
 		defaultModelFound = defaultModelFound || model.ID == cfg.Provider.DefaultModel
 		if model.ID == cfg.Provider.DefaultModel {
@@ -290,6 +329,10 @@ func applyTable(cfg *Config, root *lua.LTable) {
 		}
 	}
 
+	if providers := table(root, "providers"); providers != nil {
+		cfg.Providers = providerList(providers)
+	}
+
 	if paste := table(root, "paste"); paste != nil {
 		cfg.Paste.RestoreFocus = boolValue(paste, "restore_focus", cfg.Paste.RestoreFocus)
 		cfg.Paste.DelayMS = intValue(paste, "delay_ms", cfg.Paste.DelayMS)
@@ -299,7 +342,7 @@ func applyTable(cfg *Config, root *lua.LTable) {
 }
 
 func validateLuaConfig(root *lua.LTable) error {
-	if err := validateKeys(root, "config", "ui", "provider", "paste"); err != nil {
+	if err := validateKeys(root, "config", "ui", "provider", "providers", "paste"); err != nil {
 		return err
 	}
 	if err := validateOptionalTable(root, "ui", "config.ui", func(ui *lua.LTable) error {
@@ -334,6 +377,9 @@ func validateLuaConfig(root *lua.LTable) error {
 		}
 		return validateOptionalTable(provider, "models", "provider.models", validateModelList)
 	}); err != nil {
+		return err
+	}
+	if err := validateOptionalTable(root, "providers", "config.providers", validateProviderList); err != nil {
 		return err
 	}
 	return validateOptionalTable(root, "paste", "config.paste", func(paste *lua.LTable) error {
@@ -433,6 +479,51 @@ func validateReasoningEffortList(efforts *lua.LTable) error {
 	for index := 1; index <= count; index++ {
 		if efforts.RawGetInt(index) == lua.LNil {
 			return fmt.Errorf("reasoning_efforts must be a contiguous array; index %d is missing", index)
+		}
+	}
+	return nil
+}
+
+func validateProviderList(providers *lua.LTable) error {
+	count := 0
+	var validationErr error
+	providers.ForEach(func(key, value lua.LValue) {
+		if validationErr != nil {
+			return
+		}
+		index, ok := key.(lua.LNumber)
+		if !ok || index < 1 || float64(int(index)) != float64(index) {
+			validationErr = fmt.Errorf("providers must be a contiguous array, got key %q", key.String())
+			return
+		}
+		count++
+		entry, ok := value.(*lua.LTable)
+		if !ok {
+			validationErr = fmt.Errorf("providers[%d] must be a table, got %s", int(index), value.Type())
+			return
+		}
+		if err := validateKeys(entry, fmt.Sprintf("providers[%d]", int(index)), "id", "label", "base_url"); err != nil {
+			validationErr = err
+			return
+		}
+		for _, field := range []string{"id", "label", "base_url"} {
+			if err := validateOptionalType(entry, field, fmt.Sprintf("providers[%d].%s", int(index), field), lua.LTString); err != nil {
+				validationErr = err
+				return
+			}
+		}
+		id, ok := entry.RawGetString("id").(lua.LString)
+		if !ok || strings.TrimSpace(string(id)) == "" {
+			validationErr = fmt.Errorf("providers[%d].id must be a non-empty string", int(index))
+			return
+		}
+	})
+	if validationErr != nil {
+		return validationErr
+	}
+	for index := 1; index <= count; index++ {
+		if providers.RawGetInt(index) == lua.LNil {
+			return fmt.Errorf("providers must be a contiguous array; index %d is missing", index)
 		}
 	}
 	return nil
@@ -567,6 +658,26 @@ func modelList(tbl *lua.LTable) []ModelConfig {
 		}
 	})
 	return models
+}
+
+func providerList(tbl *lua.LTable) []ProviderSpec {
+	var providers []ProviderSpec
+	tbl.ForEach(func(_, value lua.LValue) {
+		entry, ok := value.(*lua.LTable)
+		if !ok {
+			return
+		}
+		id := stringValue(entry, "id", "")
+		if id == "" {
+			return
+		}
+		providers = append(providers, ProviderSpec{
+			ID:      id,
+			Label:   stringValue(entry, "label", id),
+			BaseURL: stringValue(entry, "base_url", ""),
+		})
+	})
+	return providers
 }
 
 func defaultReasoningEffortsFor(id string) []string {

@@ -287,3 +287,106 @@ func TestLoadRejectsNonTerminatingConfig(t *testing.T) {
 		t.Fatal("Load did not return; the config evaluation timeout is not applied")
 	}
 }
+
+func TestLoadProvidersConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.lua")
+	if err := os.WriteFile(path, []byte(`
+return {
+  providers = {
+    { id = "local", label = "Local vLLM", base_url = "http://localhost:8000/v1" },
+    { id = "corp-gw", base_url = "https://gw.example.com/v1" },
+  },
+  provider = {
+    default_model = "llama-3",
+    default_reasoning_effort = "auto",
+    models = {
+      { id = "llama-3", label = "Llama 3", provider = "local", reasoning_efforts = { "auto", "low" } },
+    },
+  },
+}
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.Providers) != 2 {
+		t.Fatalf("unexpected providers: %#v", cfg.Providers)
+	}
+	if cfg.Providers[0].ID != "local" || cfg.Providers[0].Label != "Local vLLM" || cfg.Providers[0].BaseURL != "http://localhost:8000/v1" {
+		t.Fatalf("unexpected first provider: %#v", cfg.Providers[0])
+	}
+	if cfg.Providers[1].ID != "corp-gw" || cfg.Providers[1].Label != "corp-gw" || cfg.Providers[1].BaseURL != "https://gw.example.com/v1" {
+		t.Fatalf("unexpected second provider: %#v", cfg.Providers[1])
+	}
+	if cfg.Provider.DefaultModel != "llama-3" || cfg.Provider.Models[0].Provider != "local" {
+		t.Fatalf("unexpected provider config: %#v", cfg.Provider)
+	}
+}
+
+func TestValidateAcceptsCustomProvider(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers = append(cfg.Providers, ProviderSpec{ID: "local", BaseURL: "http://localhost:8000/v1"})
+	cfg.Provider.Models = append(cfg.Provider.Models, ModelConfig{ID: "llama-3", Provider: "local", ReasoningEfforts: []string{"auto"}})
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate rejected a custom provider: %v", err)
+	}
+}
+
+func TestValidateRejectsReservedProviderID(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers = append(cfg.Providers, ProviderSpec{ID: ProviderOpenAI, BaseURL: "http://localhost:8000/v1"})
+	if err := Validate(cfg); err == nil {
+		t.Fatal("Validate accepted a provider id that collides with a built-in")
+	}
+}
+
+func TestValidateRejectsDuplicateProviderID(t *testing.T) {
+	cfg := Defaults()
+	cfg.Providers = append(cfg.Providers,
+		ProviderSpec{ID: "local", BaseURL: "http://localhost:8000/v1"},
+		ProviderSpec{ID: "local", BaseURL: "http://localhost:9000/v1"},
+	)
+	if err := Validate(cfg); err == nil {
+		t.Fatal("Validate accepted duplicate provider ids")
+	}
+}
+
+func TestValidateRejectsInvalidProviderBaseURL(t *testing.T) {
+	for name, baseURL := range map[string]string{
+		"empty":    "",
+		"relative": "/v1",
+		"scheme":   "file:///tmp/v1",
+		"no host":  "http:///v1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := Defaults()
+			cfg.Providers = append(cfg.Providers, ProviderSpec{ID: "local", BaseURL: baseURL})
+			if err := Validate(cfg); err == nil {
+				t.Fatalf("Validate accepted base_url %q", baseURL)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidProviderEntries(t *testing.T) {
+	for name, source := range map[string]string{
+		"wrong type":  `return { providers = { "local" } }`,
+		"field type":  `return { providers = { { id = "local", base_url = 123 } } }`,
+		"missing id":  `return { providers = { { base_url = "http://localhost/v1" } } }`,
+		"unknown key": `return { providers = { { id = "local", url = "http://localhost/v1" } } }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.lua")
+			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load accepted an invalid provider entry")
+			}
+		})
+	}
+}
