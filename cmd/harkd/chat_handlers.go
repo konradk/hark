@@ -20,31 +20,33 @@ func (a *appState) ask(ctx context.Context, req ipc.Request, send func(any) erro
 	if err := decodeParams(req, "ask", &askReq); err != nil {
 		return err
 	}
+	cfg := a.snapshotConfig()
+	providers := a.snapshotProviders()
 	if askReq.Model == "" {
-		askReq.Model = a.cfg.Provider.DefaultModel
+		askReq.Model = cfg.Provider.DefaultModel
 	}
 	if askReq.ReasoningEffort == "" {
-		askReq.ReasoningEffort = a.cfg.Provider.DefaultReasoningEffort
+		askReq.ReasoningEffort = cfg.Provider.DefaultReasoningEffort
 	}
 	if askReq.ConversationID == "" {
 		askReq.ConversationID = newConversationID()
 	}
-	if err := ai.ValidateRequest(askReq, a.allowedModels()); err != nil {
+	if err := ai.ValidateRequest(askReq, allowedModelIDs(cfg)); err != nil {
 		return fmt.Errorf("invalid ask request: %w", err)
 	}
 	if err := a.validateAttachments(askReq.Attachments); err != nil {
 		return err
 	}
 
-	modelConfig, ok := configuredModel(a.cfg, askReq.Model)
+	modelConfig, ok := configuredModel(cfg, askReq.Model)
 	if !ok {
 		return fmt.Errorf("model %q is not configured", askReq.Model)
 	}
-	providerName := a.providerNameForModel(askReq.Model)
+	providerName, _ := configuredProviderForModel(cfg, askReq.Model)
 	if !settings.SupportsReasoningEffort(modelConfig.ReasoningEfforts, askReq.ReasoningEffort) {
 		return fmt.Errorf("reasoning effort %q is not supported by model %q", askReq.ReasoningEffort, askReq.Model)
 	}
-	provider, ok := a.providers[providerName]
+	provider, ok := providers[providerName]
 	if !ok {
 		return fmt.Errorf("no provider configured for model %q", askReq.Model)
 	}

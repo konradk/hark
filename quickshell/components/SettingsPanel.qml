@@ -36,6 +36,14 @@ Rectangle {
     property string xAISecretKeyInput: ""
     property bool xAISecretSaveBusy: false
     property bool xAISecretDeleteBusy: false
+    property var providersModel: null
+    property bool providersBusy: false
+    property bool providerAddBusy: false
+    property bool providerFormVisible: false
+    property string providerFormLabel: ""
+    property string providerFormBaseURL: ""
+    property string providerFormModel: ""
+    property string providerFormKey: ""
 
     readonly property real labelWidth: 180
 
@@ -55,6 +63,8 @@ Rectangle {
     signal xAISecretInputChanged(string text)
     signal xAISecretSaveRequested()
     signal xAISecretDeleteRequested()
+    signal providerAddRequested(string label, string baseURL, string model, string key)
+    signal providerRemoveRequested(string id)
     signal cancelRequested()
 
     function c(name, fallback) {
@@ -73,6 +83,14 @@ Rectangle {
 
     function focusSecretInput() {
         openAISecretRow.focusInput();
+    }
+
+    function resetProviderForm() {
+        providerFormVisible = false;
+        providerFormLabel = "";
+        providerFormBaseURL = "";
+        providerFormModel = "";
+        providerFormKey = "";
     }
 
     function beginShortcutRecording(action) {
@@ -110,6 +128,7 @@ Rectangle {
         openAISecretRow.stopEditing();
         openRouterSecretRow.stopEditing();
         xAISecretRow.stopEditing();
+        panel.resetProviderForm();
     }
 
     Column {
@@ -261,6 +280,283 @@ Rectangle {
             onRecordRequested: panel.shortcutRecordRequested("screenshot")
             onDisableRequested: panel.shortcutDisableRequested("screenshot")
             onShortcutKeyPressed: event => panel.shortcutKeyPressed(event)
+        }
+
+        Text {
+            width: parent.width
+            text: "PROVIDERS"
+            color: panel.c("text_muted", "#8a93a3")
+            font.family: panel.fontFamily
+            font.pixelSize: panel.fontSize("caption", 10)
+            font.letterSpacing: 1.2
+            font.weight: Font.DemiBold
+            topPadding: 14
+            bottomPadding: 4
+        }
+
+        Repeater {
+            model: panel.providersModel
+
+            delegate: Item {
+                width: parent.width
+                height: 34
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: providerRemoveButton.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 0
+
+                    Text {
+                        width: parent.width
+                        text: String(model.label ?? model.id ?? "")
+                        color: panel.c("text", "#d3d8e2")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: {
+                            const base = String(model.baseUrl ?? "");
+                            const models = String(model.models ?? "");
+                            return models.length > 0 ? base + "  ·  " + models : base;
+                        }
+                        color: panel.c("text_muted", "#8a93a3")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("body_small", 11)
+                        elide: Text.ElideRight
+                    }
+                }
+
+                PaletteButton {
+                    id: providerRemoveButton
+
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Remove"
+                    tooltipText: "Remove this provider and its model"
+                    danger: true
+                    theme: panel.theme
+                    enabled: !panel.providersBusy
+                    onClicked: panel.providerRemoveRequested(String(model.id ?? ""))
+                }
+            }
+        }
+
+        Item {
+            width: parent.width
+            height: 34
+
+            PaletteButton {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: panel.providerFormVisible ? "Cancel" : "Add provider"
+                tooltipText: "Add an OpenAI-compatible provider"
+                theme: panel.theme
+                filled: panel.providerFormVisible
+                enabled: !panel.providerAddBusy
+                onClicked: {
+                    if (panel.providerFormVisible)
+                        panel.resetProviderForm();
+                    else
+                        panel.providerFormVisible = true;
+                }
+            }
+        }
+
+        Column {
+            width: parent.width
+            visible: panel.providerFormVisible
+            spacing: 4
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Name"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerNameField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerNameField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormLabel
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormLabel = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Base URL"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerBaseUrlField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerBaseUrlField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormBaseURL
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormBaseURL = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Model ID"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerModelField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerModelField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormModel
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormModel = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "API key"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerKeyField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerKeyField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormKey
+                        echoMode: TextInput.Password
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormKey = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 34
+
+                PaletteButton {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: panel.providerAddBusy ? "Adding" : "Add"
+                    tooltipText: "Add this provider"
+                    theme: panel.theme
+                    filled: true
+                    primary: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && panel.providerFormModel.trim().length > 0
+                    enabled: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && panel.providerFormModel.trim().length > 0 && !panel.providerAddBusy
+                    onClicked: panel.providerAddRequested(panel.providerFormLabel, panel.providerFormBaseURL, panel.providerFormModel, panel.providerFormKey)
+                }
+            }
         }
 
         Text {

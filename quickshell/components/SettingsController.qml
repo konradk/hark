@@ -16,6 +16,12 @@ QtObject {
     property var modelsModel: ListModel {
     }
 
+    property var providersModel: ListModel {
+    }
+
+    property string pendingProviderID: ""
+    property string pendingProviderKey: ""
+
     property var reasoningModesModel: ListModel {
     }
 
@@ -46,6 +52,8 @@ QtObject {
     readonly property bool saveHistoryBusy: saveHistorySetting.busy
     readonly property bool retentionBusy: retentionSetting.busy
     readonly property bool shortcutBusy: shortcutSetProcess.running
+    readonly property bool providersBusy: providersListProcess.running || providerAddProcess.running || providerRemoveProcess.running
+    readonly property bool providerAddBusy: providerAddProcess.running || providerSecretProcess.running
     readonly property bool secretStatusBusy: openAISecret.statusBusy || openRouterSecret.statusBusy || xAISecret.statusBusy
     readonly property bool secretSaveBusy: openAISecret.saveBusy
     readonly property bool secretDeleteBusy: openAISecret.deleteBusy
@@ -277,6 +285,67 @@ QtObject {
 
     function deleteXAISecret() {
         xAISecret.remove();
+    }
+
+    function loadProviders() {
+        if (!providersListProcess.running)
+            providersListProcess.exec([harkctlPath, "provider", "list", "--json"]);
+
+    }
+
+    function handleProviders(line) {
+        if (line.length === 0)
+            return ;
+
+        try {
+            const providers = JSON.parse(line);
+            providersModel.clear();
+            for (const provider of providers) {
+                const modelLabels = Array.isArray(provider.models) ? provider.models.map(model => String(model.label ?? model.id)).join(", ") : "";
+                providersModel.append({
+                    "id": String(provider.id ?? ""),
+                    "label": String(provider.label ?? provider.id ?? ""),
+                    "baseUrl": String(provider.base_url ?? ""),
+                    "models": modelLabels
+                });
+            }
+        } catch (error) {
+            app.statusText = "Provider list parse failed";
+        }
+    }
+
+    function providerIDFromLabel(label) {
+        const slug = String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+        return slug.length > 0 ? slug : "provider";
+    }
+
+    function addProvider(label, baseURL, model, apiKey) {
+        if (providerAddProcess.running)
+            return ;
+
+        pendingProviderID = providerIDFromLabel(label);
+        pendingProviderKey = String(apiKey).trim();
+        app.statusText = "Adding provider...";
+        providerAddProcess.exec([harkctlPath, "provider", "add", "--json", "--id", pendingProviderID, "--label", String(label).trim(), "--base-url", String(baseURL).trim(), "--model", String(model).trim()]);
+    }
+
+    function removeProvider(id) {
+        if (providerRemoveProcess.running)
+            return ;
+
+        app.statusText = "Removing provider...";
+        providerRemoveProcess.exec([harkctlPath, "provider", "remove", "--json", "--id", id]);
+    }
+
+    function finishProviderChange(successText) {
+        app.statusText = successText;
+        pendingProviderID = "";
+        pendingProviderKey = "";
+        if (app && app.resetProviderForm)
+            app.resetProviderForm();
+
+        loadProviders();
+        loadModels();
     }
 
     function loadGlobalShortcut() {
@@ -701,6 +770,88 @@ QtObject {
             onRead: (line) => {
                 if (line.length > 0)
                     root.app.statusText = line;
+
+            }
+        }
+
+    }
+
+    property Process providersListProcess: Process {
+        stdout: SplitParser {
+            onRead: (line) => {
+                return root.handleProviders(line);
+            }
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process providerAddProcess: Process {
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                if (root.pendingProviderKey.length > 0) {
+                    providerSecretProcess.exec([harkctlPath, "secret", "set", "--stdin", root.pendingProviderID]);
+                    return ;
+                }
+                root.finishProviderChange("Provider added");
+                return ;
+            }
+            root.pendingProviderID = "";
+            root.pendingProviderKey = "";
+            root.loadProviders();
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process providerSecretProcess: Process {
+        stdinEnabled: true
+        onStarted: {
+            write(root.pendingProviderKey + "\n");
+            stdinEnabled = false;
+        }
+        onExited: (exitCode) => {
+            stdinEnabled = true;
+            root.finishProviderChange(exitCode === 0 ? "Provider added" : "Provider added, but key save failed");
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process providerRemoveProcess: Process {
+        onExited: (exitCode) => {
+            if (exitCode === 0) {
+                root.finishProviderChange("Provider removed");
+                return ;
+            }
+            root.loadProviders();
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
 
             }
         }

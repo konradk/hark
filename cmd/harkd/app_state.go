@@ -33,6 +33,12 @@ type historyRepository interface {
 	ReferencedAttachmentPaths(context.Context) ([]string, error)
 	GetSetting(context.Context, settings.Key) (string, bool, error)
 	SetSetting(context.Context, settings.Key, string) error
+	ListProviders(context.Context) ([]history.Provider, error)
+	UpsertProvider(context.Context, history.Provider) error
+	DeleteProvider(context.Context, string) error
+	ListModels(context.Context) ([]history.Model, error)
+	UpsertModel(context.Context, history.Model) error
+	DeleteModel(context.Context, string) error
 }
 
 type screenshotCapturer interface {
@@ -60,21 +66,44 @@ type runtimeState struct {
 }
 
 type appState struct {
+	// baseCfg is the config loaded from config.lua. cfg is the effective,
+	// merged config (baseCfg plus panel-managed providers and models); both it
+	// and providers are replaced atomically on reload, never mutated in place.
+	baseCfg   config.Config
 	cfg       config.Config
 	providers map[string]ai.Provider
-	clip      clipboard.Clipboard
-	paster    paste.Paster
-	hypr      hyprland.Client
-	capturer  screenshotCapturer
-	cleaner   screenshotCleaner
-	history   historyRepository
-	logger    appLogger
+	cfgMu     sync.RWMutex
+
+	clip     clipboard.Clipboard
+	paster   paste.Paster
+	hypr     hyprland.Client
+	capturer screenshotCapturer
+	cleaner  screenshotCleaner
+	history  historyRepository
+	logger   appLogger
 
 	// attachmentDir bounds which files an ask request may attach.
 	attachmentDir string
 
 	mu     sync.RWMutex
 	states map[string]runtimeState
+}
+
+// snapshotConfig returns the effective config. The value and its slices are
+// never mutated after publication, so callers may use it without holding the
+// lock.
+func (a *appState) snapshotConfig() config.Config {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg
+}
+
+// snapshotProviders returns the live provider map. It is replaced, never
+// mutated, on reload.
+func (a *appState) snapshotProviders() map[string]ai.Provider {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.providers
 }
 
 func (a *appState) setLatestAnswer(stateID, text string) {
@@ -170,15 +199,19 @@ func (a *appState) providerStateBytesLocked() int {
 }
 
 func (a *appState) allowedModels() []string {
-	models := make([]string, 0, len(a.cfg.Provider.Models))
-	for _, model := range a.cfg.Provider.Models {
+	return allowedModelIDs(a.snapshotConfig())
+}
+
+func allowedModelIDs(cfg config.Config) []string {
+	models := make([]string, 0, len(cfg.Provider.Models))
+	for _, model := range cfg.Provider.Models {
 		models = append(models, model.ID)
 	}
 	return models
 }
 
 func (a *appState) providerNameForModel(model string) string {
-	provider, ok := configuredProviderForModel(a.cfg, model)
+	provider, ok := configuredProviderForModel(a.snapshotConfig(), model)
 	if ok {
 		return provider
 	}
@@ -210,10 +243,11 @@ func (a *appState) settingValue(ctx context.Context, key settings.Key) (any, boo
 	if err != nil {
 		return nil, false, err
 	}
+	cfg := a.snapshotConfig()
 	if !found {
-		return settings.DefaultValue(key, a.cfg.Provider.DefaultModel, a.cfg.Provider.DefaultReasoningEffort), false, nil
+		return settings.DefaultValue(key, cfg.Provider.DefaultModel, cfg.Provider.DefaultReasoningEffort), false, nil
 	}
-	value, err := settings.DecodeStored(key, stored, a.allowedModels())
+	value, err := settings.DecodeStored(key, stored, allowedModelIDs(cfg))
 	if err != nil {
 		return nil, true, fmt.Errorf("decode stored setting %q: %w", key, err)
 	}

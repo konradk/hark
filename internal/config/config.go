@@ -74,9 +74,9 @@ const (
 	ProviderXAI        = "xai"
 )
 
-// isBuiltinProvider reports whether name is one of the providers shipped with
+// IsBuiltinProvider reports whether name is one of the providers shipped with
 // Hark, as opposed to a user-defined OpenAI-compatible provider.
-func isBuiltinProvider(name string) bool {
+func IsBuiltinProvider(name string) bool {
 	switch name {
 	case ProviderOpenAI, ProviderOpenRouter, ProviderXAI:
 		return true
@@ -223,7 +223,7 @@ func Validate(cfg Config) error {
 		if provider.ID == "" {
 			return errors.New("providers entries must have an id")
 		}
-		if isBuiltinProvider(provider.ID) {
+		if IsBuiltinProvider(provider.ID) {
 			return fmt.Errorf("providers entry %q conflicts with a built-in provider", provider.ID)
 		}
 		if _, exists := seenProviders[provider.ID]; exists {
@@ -246,7 +246,7 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("provider.models contains duplicate id %q", model.ID)
 		}
 		seenModels[model.ID] = struct{}{}
-		if model.Provider != "" && !isBuiltinProvider(model.Provider) {
+		if model.Provider != "" && !IsBuiltinProvider(model.Provider) {
 			if _, ok := seenProviders[model.Provider]; !ok {
 				return fmt.Errorf("provider.models entry %q has unsupported provider %q", model.ID, model.Provider)
 			}

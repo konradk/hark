@@ -95,6 +95,11 @@ func DeleteProviderAPIKey(provider string) error {
 // allows the built-in providers plus user-defined OpenAI-compatible providers.
 var providerNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 
+// ValidProviderName reports whether name may be used as a provider id.
+func ValidProviderName(name string) bool {
+	return providerNamePattern.MatchString(name)
+}
+
 func normalizeProvider(provider string) (string, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if provider == "" {

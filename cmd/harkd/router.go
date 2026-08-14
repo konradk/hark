@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"hark/internal/buildinfo"
-	"hark/internal/config"
 	"hark/internal/ipc"
 	"hark/internal/settings"
 )
@@ -16,8 +15,7 @@ type serverMetadata struct {
 	ConfigPath string
 }
 
-func newIPCServer(app *appState, cfg config.Config, metadata serverMetadata) ipc.Server {
-	defaultProvider, _ := configuredProviderForModel(cfg, cfg.Provider.DefaultModel)
+func newIPCServer(app *appState, metadata serverMetadata) ipc.Server {
 	return ipc.Server{
 		SocketPath: metadata.SocketPath,
 		Handler: func(ctx context.Context, req ipc.Request) (any, error) {
@@ -26,6 +24,8 @@ func newIPCServer(app *appState, cfg config.Config, metadata serverMetadata) ipc
 				if err := validateNoParams(req, "status"); err != nil {
 					return nil, err
 				}
+				cfg := app.snapshotConfig()
+				defaultProvider, _ := configuredProviderForModel(cfg, cfg.Provider.DefaultModel)
 				return ipc.Status{
 					Name:            "hark",
 					Version:         buildinfo.Version,
@@ -40,13 +40,15 @@ func newIPCServer(app *appState, cfg config.Config, metadata serverMetadata) ipc
 				if err := validateNoParams(req, "models_list"); err != nil {
 					return nil, err
 				}
-				return cfg.Provider.Models, nil
+				return app.snapshotConfig().Provider.Models, nil
 			case "theme_get":
 				if err := validateNoParams(req, "theme_get"); err != nil {
 					return nil, err
 				}
+				cfg := app.snapshotConfig()
 				return ipc.Theme{Name: cfg.UI.Theme, Colors: cfg.UI.Colors}, nil
 			case "reasoning_modes_list":
+				cfg := app.snapshotConfig()
 				model, err := decodeReasoningModesRequest(req, cfg.Provider.DefaultModel)
 				if err != nil {
 					return nil, err
@@ -58,6 +60,12 @@ func newIPCServer(app *appState, cfg config.Config, metadata serverMetadata) ipc
 				return settings.ReasoningModesFor(configured.ReasoningEfforts), nil
 			case "ask":
 				return nil, ipc.ErrUseStream
+			case "providers_list":
+				return app.providersList(ctx, req)
+			case "providers_add":
+				return app.providersAdd(ctx, req)
+			case "providers_remove":
+				return app.providersRemove(ctx, req)
 			case "copy_latest":
 				return app.copyLatestRequest(ctx, req)
 			case "copy_text":

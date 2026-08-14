@@ -11,7 +11,7 @@ import (
 	"hark/internal/ai"
 )
 
-const latestSchemaVersion = 4
+const latestSchemaVersion = 5
 
 type migration struct {
 	version int
@@ -23,6 +23,7 @@ var migrations = []migration{
 	{version: 2, apply: migrateConversations},
 	{version: 3, apply: migrateAttachments},
 	{version: 4, apply: migrateDropAttachmentsJSON},
+	{version: 5, apply: migrateProviders},
 }
 
 func sqliteDSN(path string) string {
@@ -202,6 +203,25 @@ func migrateDropAttachmentsJSON(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("drop history attachments_json: %w", err)
 	}
 	return nil
+}
+
+// migrateProviders creates the tables backing user-defined OpenAI-compatible
+// providers and their models, which are managed from the settings panel.
+func migrateProviders(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL DEFAULT '',
+  base_url TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS models (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL
+);
+`)
+	return err
 }
 
 type schemaQuerier interface {

@@ -66,6 +66,8 @@ func main() {
 		err = historyCommand(ctx, *socketPath, args[1:])
 	case "setting":
 		err = settingCommand(ctx, *socketPath, args[1:])
+	case "provider":
+		err = providerCommand(ctx, *socketPath, args[1:])
 	case "shortcut":
 		err = shortcutCommand(ctx, args[1:])
 	case "secret":
@@ -131,6 +133,9 @@ func usage() {
   harkctl [flags] history clear --yes
   harkctl [flags] setting get KEY
   harkctl [flags] setting set KEY VALUE
+  harkctl [flags] provider list [--json]
+  harkctl [flags] provider add [--json] --id ID --label LABEL --base-url URL --model ID [--model-label LABEL]
+  harkctl [flags] provider remove [--json] --id ID
   harkctl [flags] shortcut get [--action open|screenshot]
   harkctl [flags] shortcut set [--action open|screenshot] SHORTCUT
   harkctl [flags] shortcut remove [--action open|screenshot]

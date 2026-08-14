@@ -94,7 +94,7 @@ PanelWindow {
     property bool hasThread: threadMessages.length > 0 || streamingAnswer.length > 0 || answerText.length > 0 || errorText.length > 0 || asking
     property bool hasAnswer: answerText.length > 0
     property bool hasAttachment: screenshotPath.length > 0 || screenshotProcess.running
-    readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured || settingsController.xAISecretConfigured
+    readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured || settingsController.xAISecretConfigured || settingsController.providersModel.count > 0
     property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !responseBusy && !settingsController.secretsExpanded
     property bool promptEmpty: prompt.text.trim().length === 0
     // No prompt can be sent without a provider key, so the setup hint outranks
@@ -445,6 +445,10 @@ PanelWindow {
         secretPanel.syncRetention();
     }
 
+    function resetProviderForm() {
+        secretPanel.resetProviderForm();
+    }
+
     function initialize() {
         if (initialized || !backendReady)
             return;
@@ -460,6 +464,7 @@ PanelWindow {
         settingsController.loadHistoryRetention();
         settingsController.loadSecretStatus();
         settingsController.loadGlobalShortcut();
+        settingsController.loadProviders();
         historyController.loadHistory();
     }
 
@@ -780,6 +785,7 @@ PanelWindow {
             historyController.historySelectionIndex = -1;
             settingsController.loadSecretStatus();
             settingsController.loadGlobalShortcut();
+            settingsController.loadProviders();
             if (!settingsController.secretConfigured && !settingsController.openRouterSecretConfigured && !settingsController.xAISecretConfigured)
                 Qt.callLater(function() {
                     secretPanel.focusSecretInput();
@@ -1791,6 +1797,9 @@ PanelWindow {
                         xAISecretKeyInput: settingsController.xAISecretKeyInput
                         xAISecretSaveBusy: settingsController.xAISecretSaveBusy
                         xAISecretDeleteBusy: settingsController.xAISecretDeleteBusy
+                        providersModel: settingsController.providersModel
+                        providersBusy: settingsController.providersBusy
+                        providerAddBusy: settingsController.providerAddBusy
                         onShowRecentChatsToggled: checked => settingsController.saveShowRecentChats(checked)
                         onSaveHistoryToggled: checked => settingsController.saveSaveHistory(checked)
                         onRetentionSelected: days => settingsController.saveHistoryRetention(days)
@@ -1807,6 +1816,8 @@ PanelWindow {
                         onXAISecretInputChanged: text => settingsController.xAISecretKeyInput = text
                         onXAISecretSaveRequested: settingsController.saveXAISecret()
                         onXAISecretDeleteRequested: settingsController.deleteXAISecret()
+                        onProviderAddRequested: (label, baseURL, model, key) => settingsController.addProvider(label, baseURL, model, key)
+                        onProviderRemoveRequested: id => settingsController.removeProvider(id)
                         onCancelRequested: root.cancelOrClose()
                     }
 
