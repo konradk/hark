@@ -533,8 +533,6 @@ and lets you:
 - **Add** or **edit** a provider (name, base URL, and API key).
 - Attach **multiple models** to one provider; each model uses its endpoint
   model id as its name, so there is nothing extra to name.
-- **Fetch** the models an endpoint exposes (`GET {base_url}/models`) and add
-  them with one click.
 
 Providers created this way are stored by the daemon and merged with the ones
 in `config.lua`; config-file entries take precedence on ID collisions. The
@@ -543,7 +541,6 @@ same operations are available on the CLI:
 ```bash
 harkctl provider list --json
 harkctl provider add --json --id local --label "Local vLLM" --base-url http://localhost:8000/v1
-harkctl provider fetch-models --json --provider local
 harkctl model add --json --provider local --id llama-3.1-8b
 harkctl model remove --json --id llama-3.1-8b
 harkctl provider remove --json --id local

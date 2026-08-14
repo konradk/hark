@@ -40,9 +40,6 @@ Rectangle {
     property bool providersBusy: false
     property bool providerAddBusy: false
     property bool modelsBusy: false
-    property bool fetchBusy: false
-    property string fetchedProviderID: ""
-    property var fetchedModels: []
     property bool providerFormVisible: false
     property string editingProviderID: ""
     property string providerFormLabel: ""
@@ -71,7 +68,6 @@ Rectangle {
     signal providerRemoveRequested(string id)
     signal modelAddRequested(string providerId, string modelId)
     signal modelRemoveRequested(string modelId)
-    signal fetchRequested(string providerId)
     signal cancelRequested()
 
     function c(name, fallback) {
@@ -324,16 +320,12 @@ Rectangle {
                 baseUrl: String(model.baseUrl ?? "")
                 models: model.models ?? []
                 busy: panel.providersBusy || panel.modelsBusy
-                fetchBusy: panel.fetchBusy
-                fetched: panel.fetchedProviderID === String(model.id ?? "")
-                fetchedModels: panel.fetchedModels
                 theme: panel.theme
                 fontFamily: panel.fontFamily
                 onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl)
                 onRemoveRequested: panel.providerRemoveRequested(String(model.id ?? ""))
                 onModelAddRequested: modelId => panel.modelAddRequested(String(model.id ?? ""), modelId)
                 onModelRemoveRequested: modelId => panel.modelRemoveRequested(modelId)
-                onFetchRequested: panel.fetchRequested(String(model.id ?? ""))
             }
         }
 

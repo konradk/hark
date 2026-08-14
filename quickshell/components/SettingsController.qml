@@ -19,8 +19,6 @@ QtObject {
     property var providersModel: ListModel {
     }
 
-    property var fetchedModels: []
-    property string fetchedProviderID: ""
     property string pendingProviderID: ""
     property string pendingProviderKey: ""
 
@@ -57,7 +55,6 @@ QtObject {
     readonly property bool providersBusy: providersListProcess.running || providerAddProcess.running || providerRemoveProcess.running
     readonly property bool providerAddBusy: providerAddProcess.running || providerSecretProcess.running
     readonly property bool modelsBusy: modelAddProcess.running || modelRemoveProcess.running
-    readonly property bool fetchBusy: fetchModelsProcess.running
     readonly property bool secretStatusBusy: openAISecret.statusBusy || openRouterSecret.statusBusy || xAISecret.statusBusy
     readonly property bool secretSaveBusy: openAISecret.saveBusy
     readonly property bool secretDeleteBusy: openAISecret.deleteBusy
@@ -320,18 +317,6 @@ QtObject {
         }
     }
 
-    function handleFetchedModels(line) {
-        if (line.length === 0)
-            return ;
-
-        try {
-            const result = JSON.parse(line);
-            fetchedModels = Array.isArray(result.models) ? result.models.map(id => String(id)) : [];
-        } catch (error) {
-            app.statusText = "Model list parse failed";
-        }
-    }
-
     function providerIDFromLabel(label) {
         const slug = String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
         return slug.length > 0 ? slug : "provider";
@@ -369,16 +354,6 @@ QtObject {
 
         app.statusText = "Removing model...";
         modelRemoveProcess.exec([harkctlPath, "model", "remove", "--json", "--id", modelID]);
-    }
-
-    function fetchProviderModels(providerID) {
-        if (fetchModelsProcess.running)
-            return ;
-
-        fetchedProviderID = providerID;
-        fetchedModels = [];
-        app.statusText = "Fetching models...";
-        fetchModelsProcess.exec([harkctlPath, "provider", "fetch-models", "--json", "--provider", providerID]);
     }
 
     function refreshAfterModelChange(successText) {
@@ -934,29 +909,6 @@ QtObject {
                 return ;
             }
             root.loadProviders();
-        }
-
-        stderr: SplitParser {
-            onRead: (line) => {
-                if (line.length > 0)
-                    root.app.statusText = line.replace(/^harkctl:\s*/, "");
-
-            }
-        }
-
-    }
-
-    property Process fetchModelsProcess: Process {
-        stdout: SplitParser {
-            onRead: (line) => {
-                return root.handleFetchedModels(line);
-            }
-        }
-
-        onExited: (exitCode) => {
-            if (exitCode === 0) {
-                root.app.statusText = root.fetchedModels.length > 0 ? (root.fetchedModels.length + " models found") : "No models returned";
-            }
         }
 
         stderr: SplitParser {

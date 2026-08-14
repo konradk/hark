@@ -1801,9 +1801,6 @@ PanelWindow {
                         providersBusy: settingsController.providersBusy
                         providerAddBusy: settingsController.providerAddBusy
                         modelsBusy: settingsController.modelsBusy
-                        fetchBusy: settingsController.fetchBusy
-                        fetchedProviderID: settingsController.fetchedProviderID
-                        fetchedModels: settingsController.fetchedModels
                         onShowRecentChatsToggled: checked => settingsController.saveShowRecentChats(checked)
                         onSaveHistoryToggled: checked => settingsController.saveSaveHistory(checked)
                         onRetentionSelected: days => settingsController.saveHistoryRetention(days)
@@ -1824,7 +1821,6 @@ PanelWindow {
                         onProviderRemoveRequested: id => settingsController.removeProvider(id)
                         onModelAddRequested: (providerId, modelId) => settingsController.addModel(providerId, modelId)
                         onModelRemoveRequested: modelId => settingsController.removeModel(modelId)
-                        onFetchRequested: providerId => settingsController.fetchProviderModels(providerId)
                         onCancelRequested: root.cancelOrClose()
                     }
 

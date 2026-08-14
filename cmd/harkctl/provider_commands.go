@@ -6,9 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
 	"hark/internal/ipc"
 )
@@ -27,7 +25,7 @@ type providerEntry struct {
 
 func providerCommand(ctx context.Context, socketPath string, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: harkctl provider [list | add | remove | fetch-models]")
+		return errors.New("usage: harkctl provider [list | add | remove]")
 	}
 	switch args[0] {
 	case "list":
@@ -36,8 +34,6 @@ func providerCommand(ctx context.Context, socketPath string, args []string) erro
 		return providerAdd(ctx, socketPath, args[1:])
 	case "remove":
 		return providerRemove(ctx, socketPath, args[1:])
-	case "fetch-models":
-		return providerFetchModels(ctx, socketPath, args[1:])
 	default:
 		return fmt.Errorf("unknown provider command %q", args[0])
 	}
@@ -86,37 +82,6 @@ func providerRemove(ctx context.Context, socketPath string, args []string) error
 		return fmt.Errorf("remove provider: %w", err)
 	}
 	return printResultJSON(*compactJSON, response, "provider removed")
-}
-
-func providerFetchModels(ctx context.Context, socketPath string, args []string) error {
-	flags := flag.NewFlagSet("provider fetch-models", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	compactJSON := flags.Bool("json", false, "write compact JSON")
-	provider := flags.String("provider", "", "provider id (uses its stored base URL and key)")
-	baseURL := flags.String("base-url", "", "absolute http(s) base URL")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 {
-		return errors.New("usage: harkctl provider fetch-models [--json] [--provider ID | --base-url URL]")
-	}
-
-	params := map[string]any{}
-	if *provider != "" {
-		params["provider"] = *provider
-	} else if *baseURL != "" {
-		params["base_url"] = *baseURL
-		apiKey, _ := io.ReadAll(io.LimitReader(os.Stdin, maxSecretBytes+1))
-		params["api_key"] = strings.TrimSpace(string(apiKey))
-	} else {
-		return errors.New("usage: harkctl provider fetch-models [--json] [--provider ID | --base-url URL]")
-	}
-
-	var response map[string]any
-	if err := ipc.Call(ctx, socketPath, "providers_fetch_models", params, &response); err != nil {
-		return fmt.Errorf("fetch models: %w", err)
-	}
-	return printResultJSON(*compactJSON, response, "")
 }
 
 func printResultJSON(compact bool, response any, humanText string) error {

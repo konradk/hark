@@ -138,7 +138,6 @@ func usage() {
   harkctl [flags] provider list [--json]
   harkctl [flags] provider add [--json] --id ID --label LABEL --base-url URL
   harkctl [flags] provider remove [--json] --id ID
-  harkctl [flags] provider fetch-models [--json] [--provider ID | --base-url URL]
   harkctl [flags] model add [--json] --provider ID --id MODEL_ID [--label LABEL]
   harkctl [flags] model remove [--json] --id MODEL_ID
   harkctl [flags] shortcut get [--action open|screenshot]

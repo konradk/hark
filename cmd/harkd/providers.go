@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -15,7 +12,6 @@ import (
 	"hark/internal/ai/openai"
 	"hark/internal/ai/openai_compatible"
 	"hark/internal/ai/openrouter"
-	"hark/internal/ai/providerkit"
 	"hark/internal/ai/xai"
 	"hark/internal/config"
 	"hark/internal/history"
@@ -140,12 +136,6 @@ type modelAddRequest struct {
 
 type modelRemoveRequest struct {
 	ID string `json:"id"`
-}
-
-type fetchModelsRequest struct {
-	Provider string `json:"provider"`
-	BaseURL  string `json:"base_url"`
-	APIKey   string `json:"api_key"`
 }
 
 func (a *appState) providersList(ctx context.Context, req ipc.Request) (any, error) {
@@ -312,95 +302,4 @@ func (a *appState) modelsRemove(ctx context.Context, req ipc.Request) (any, erro
 		return nil, err
 	}
 	return map[string]any{"removed": true}, nil
-}
-
-func (a *appState) providersFetchModels(ctx context.Context, req ipc.Request) (any, error) {
-	var request fetchModelsRequest
-	if err := decodeParams(req, "providers_fetch_models", &request); err != nil {
-		return nil, err
-	}
-
-	baseURL := strings.TrimSpace(request.BaseURL)
-	apiKey := request.APIKey
-	if provider := strings.ToLower(strings.TrimSpace(request.Provider)); provider != "" {
-		managed, err := a.history.ListProviders(ctx)
-		if err != nil {
-			return nil, err
-		}
-		var found *history.Provider
-		for index := range managed {
-			if managed[index].ID == provider {
-				found = &managed[index]
-				break
-			}
-		}
-		if found == nil {
-			return nil, fmt.Errorf("provider %q is not managed from the panel", provider)
-		}
-		baseURL = found.BaseURL
-		key, _, err := secrets.ProviderAPIKey(provider)
-		if err != nil {
-			return nil, err
-		}
-		apiKey = key
-	}
-
-	models, err := fetchProviderModels(ctx, baseURL, apiKey)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"models": models}, nil
-}
-
-func fetchProviderModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	parsed, err := url.Parse(baseURL)
-	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
-		return nil, errors.New("base_url must be an absolute http or https URL")
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/models", nil)
-	if err != nil {
-		return nil, fmt.Errorf("create models request: %w", err)
-	}
-	httpReq.Header.Set("Accept", "application/json")
-	if strings.TrimSpace(apiKey) != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
-	}
-
-	client := providerkit.NewHTTPClient("provider")
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("call provider models: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, providerkit.APIError("provider", resp)
-	}
-
-	var body struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&body); err != nil {
-		return nil, fmt.Errorf("decode models response: %w", err)
-	}
-
-	ids := make([]string, 0, len(body.Data))
-	seen := make(map[string]struct{}, len(body.Data))
-	for _, model := range body.Data {
-		id := strings.TrimSpace(model.ID)
-		if id == "" {
-			continue
-		}
-		if _, exists := seen[id]; exists {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids, nil
 }

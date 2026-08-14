@@ -8,9 +8,6 @@ Item {
     property string baseUrl: ""
     property var models: []
     property bool busy: false
-    property bool fetched: false
-    property var fetchedModels: []
-    property bool fetchBusy: false
     property var theme: null
     property string fontFamily: ""
 
@@ -18,7 +15,6 @@ Item {
     signal removeRequested()
     signal modelAddRequested(string modelId)
     signal modelRemoveRequested(string modelId)
-    signal fetchRequested()
 
     property string modelInput: ""
 
@@ -34,10 +30,6 @@ Item {
     function fontSize(role, fallback) {
         const configured = theme ? Number(theme["font_" + role]) : NaN;
         return isFinite(configured) && configured > 0 ? configured : fallback;
-    }
-
-    function resetModelInput() {
-        modelInput = "";
     }
 
     implicitHeight: contentColumn.implicitHeight
@@ -147,18 +139,9 @@ Item {
             width: parent.width
             spacing: 6
 
-            PaletteButton {
-                anchors.verticalCenter: parent.verticalCenter
-                text: control.fetchBusy ? "Fetching" : "Fetch"
-                tooltipText: "List the models this endpoint exposes"
-                theme: control.theme
-                enabled: !control.fetchBusy && !control.busy
-                onClicked: control.fetchRequested()
-            }
-
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(80, parent.width - 2 * 84 - 24)
+                width: Math.max(120, parent.width - 84 - 6)
                 height: 26
                 radius: control.cornerRadius(6)
                 color: control.c("input", "#0d1016")
@@ -183,50 +166,15 @@ Item {
 
             PaletteButton {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Add"
-                tooltipText: "Add this model to the provider"
+                text: "Add model"
+                tooltipText: "Add this model id to the provider"
                 theme: control.theme
                 filled: true
                 primary: control.modelInput.trim().length > 0
                 enabled: control.modelInput.trim().length > 0 && !control.busy
                 onClicked: {
                     control.modelAddRequested(control.modelInput.trim());
-                    control.resetModelInput();
-                }
-            }
-        }
-
-        Flow {
-            width: parent.width
-            spacing: 4
-            visible: control.fetched && control.fetchedModels.length > 0
-
-            Repeater {
-                model: control.fetchedModels
-
-                delegate: Rectangle {
-                    height: 22
-                    width: fetchedLabel.implicitWidth + 18
-                    radius: control.cornerRadius(5)
-                    color: control.c("surface_hover", "#222733")
-                    border.width: 1
-                    border.color: control.c("panel_border", "#2b303b")
-
-                    Text {
-                        id: fetchedLabel
-
-                        anchors.centerIn: parent
-                        text: String(modelData)
-                        color: control.c("text", "#d3d8e2")
-                        font.family: control.fontFamily
-                        font.pixelSize: control.fontSize("body_small", 11)
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: control.modelAddRequested(String(modelData))
-                    }
+                    control.modelInput = "";
                 }
             }
         }
