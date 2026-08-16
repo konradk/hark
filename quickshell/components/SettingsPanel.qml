@@ -14,6 +14,8 @@ Rectangle {
     property bool saveHistoryBusy: false
     property bool retentionBusy: false
     property bool clearHistoryBusy: false
+    property bool barWidgetVisible: true
+    property bool barWidgetBusy: false
     property string globalShortcut: ""
     property bool globalShortcutConfigured: false
     property string screenshotShortcut: ""
@@ -52,6 +54,7 @@ Rectangle {
     signal saveHistoryToggled(bool checked)
     signal retentionSelected(int days)
     signal clearHistoryRequested()
+    signal barWidgetToggled(bool checked)
     signal shortcutRecordRequested(string action)
     signal shortcutDisableRequested(string action)
     signal shortcutKeyPressed(var event)
@@ -176,6 +179,16 @@ Rectangle {
         anchors.margins: 14
         spacing: 4
 
+        ToggleSettingRow {
+            width: parent.width
+            title: "Show Hark icon in the bar"
+            hint: "Hide the Hark button from the Omarchy bar if you open it with a shortcut"
+            checked: panel.barWidgetVisible
+            busy: panel.barWidgetBusy
+            theme: panel.theme
+            onToggled: checked => panel.barWidgetToggled(checked)
+        }
+
         Text {
             width: parent.width
             text: "CHATS"
@@ -184,6 +197,7 @@ Rectangle {
             font.pixelSize: panel.fontSize("caption", 10)
             font.letterSpacing: 1.2
             font.weight: Font.DemiBold
+            topPadding: 10
             bottomPadding: 4
         }
 

@@ -31,6 +31,12 @@ PanelWindow {
         const directory = String(Quickshell.shellDir);
         return directory + (directory.endsWith("/") ? "" : "/") + "shell.qml";
     }
+    readonly property string omarchyShellJsonPath: {
+        const xdg = String(Quickshell.env("XDG_CONFIG_HOME") || "");
+        const home = String(Quickshell.env("HOME") || "");
+        const base = xdg.length > 0 ? xdg : (home.length > 0 ? home + "/.config" : "");
+        return base + "/omarchy/shell.json";
+    }
     property string screenshotPath: ""
     readonly property bool screenshotCapturePending: screenshotProcess.running || screenshotRegionCaptureTimer.running || activeWindowCaptureTimer.running
     property string screenshotSource: screenshotSourceOverride.length > 0 ? screenshotSourceOverride : screenshotPath.length > 0 ? "file://" + screenshotPath : ""
@@ -465,6 +471,7 @@ PanelWindow {
         settingsController.loadSecretStatus();
         settingsController.loadGlobalShortcut();
         settingsController.loadProviders();
+        settingsController.loadBarWidgetVisibility();
         historyController.loadHistory();
     }
 
@@ -786,6 +793,7 @@ PanelWindow {
             settingsController.loadSecretStatus();
             settingsController.loadGlobalShortcut();
             settingsController.loadProviders();
+            settingsController.loadBarWidgetVisibility();
             if (!settingsController.secretConfigured && !settingsController.openRouterSecretConfigured && !settingsController.xAISecretConfigured)
                 Qt.callLater(function() {
                     secretPanel.focusSecretInput();
@@ -1769,6 +1777,8 @@ PanelWindow {
                         showRecentChats: settingsController.showRecentChats
                         saveHistory: settingsController.saveHistory
                         historyRetentionDays: settingsController.historyRetentionDays
+                        barWidgetVisible: settingsController.barWidgetVisible
+                        barWidgetBusy: settingsController.barWidgetBusy
                         retentionModel: retentionOptionsModel
                         confirmClearHistory: historyController.confirmClearHistory
                         recentChatsBusy: settingsController.recentChatsBusy
@@ -1804,6 +1814,7 @@ PanelWindow {
                         onSaveHistoryToggled: checked => settingsController.saveSaveHistory(checked)
                         onRetentionSelected: days => settingsController.saveHistoryRetention(days)
                         onClearHistoryRequested: historyController.clearAllHistory()
+                        onBarWidgetToggled: checked => settingsController.saveBarWidgetVisibility(checked)
                         onShortcutRecordRequested: action => settingsController.beginShortcutRecording(action)
                         onShortcutDisableRequested: action => settingsController.removeGlobalShortcut(action)
                         onShortcutKeyPressed: event => settingsController.captureGlobalShortcut(event)

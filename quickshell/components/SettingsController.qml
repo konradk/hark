@@ -61,6 +61,32 @@ QtObject {
     readonly property bool openRouterSecretDeleteBusy: openRouterSecret.deleteBusy
     readonly property bool xAISecretSaveBusy: xAISecret.saveBusy
     readonly property bool xAISecretDeleteBusy: xAISecret.deleteBusy
+    readonly property bool barWidgetBusy: barWidgetGetProcess.running || barWidgetSetProcess.running
+
+    property bool barWidgetVisible: true
+
+    function loadBarWidgetVisibility() {
+        if (barWidgetGetProcess.running)
+            return ;
+
+        barWidgetGetProcess.exec(["jq", "-r", "[.bar.layout.left[], .bar.layout.center[], .bar.layout.right[]] | map(select((if type == \"string\" then . else .id end) == \"hark\"))[0] | if type == \"object\" then (.hidden // false) else false end", app.omarchyShellJsonPath]);
+    }
+
+    function handleBarWidgetVisibility(line) {
+        if (line.length === 0)
+            return ;
+
+        barWidgetVisible = String(line).trim() !== "true";
+    }
+
+    function saveBarWidgetVisibility(visible) {
+        if (barWidgetSetProcess.running)
+            return ;
+
+        barWidgetVisible = visible;
+        app.statusText = visible ? "Showing Hark in the bar" : "Hiding Hark from the bar";
+        barWidgetSetProcess.exec(["omarchy", "bar", "set", "hark", "hidden", visible ? "false" : "true", "--json"]);
+    }
 
     function loadModels() {
         if (!modelsProcess.running)
@@ -859,6 +885,40 @@ QtObject {
             onRead: (line) => {
                 if (line.length > 0)
                     root.app.statusText = line.replace(/^harkctl:\s*/, "");
+
+            }
+        }
+
+    }
+
+    property Process barWidgetGetProcess: Process {
+        stdout: SplitParser {
+            onRead: (line) => {
+                return root.handleBarWidgetVisibility(line);
+            }
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line;
+
+            }
+        }
+
+    }
+
+    property Process barWidgetSetProcess: Process {
+        onExited: (exitCode) => {
+            if (exitCode !== 0)
+                root.loadBarWidgetVisibility();
+
+        }
+
+        stderr: SplitParser {
+            onRead: (line) => {
+                if (line.length > 0)
+                    root.app.statusText = line;
 
             }
         }
