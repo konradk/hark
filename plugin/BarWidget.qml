@@ -5,8 +5,17 @@ BarWidget {
     id: root
 
     moduleName: "hark"
-    implicitWidth: button.implicitWidth
-    implicitHeight: button.implicitHeight
+
+    // Hidden from the settings panel via `omarchy bar set hark hidden true`.
+    // A zero-size, invisible widget leaves no gap in the bar.
+    readonly property bool hidden: {
+        const value = setting("hidden", false);
+        return value === true || value === "true";
+    }
+
+    implicitWidth: hidden ? 0 : button.implicitWidth
+    implicitHeight: hidden ? 0 : button.implicitHeight
+    visible: !hidden
 
     BarIconButton {
         id: button

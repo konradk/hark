@@ -31,6 +31,12 @@ PanelWindow {
         const directory = String(Quickshell.shellDir);
         return directory + (directory.endsWith("/") ? "" : "/") + "shell.qml";
     }
+    readonly property string omarchyShellJsonPath: {
+        const xdg = String(Quickshell.env("XDG_CONFIG_HOME") || "");
+        const home = String(Quickshell.env("HOME") || "");
+        const base = xdg.length > 0 ? xdg : (home.length > 0 ? home + "/.config" : "");
+        return base + "/omarchy/shell.json";
+    }
     property string screenshotPath: ""
     readonly property bool screenshotCapturePending: screenshotProcess.running || screenshotRegionCaptureTimer.running || activeWindowCaptureTimer.running
     property string screenshotSource: screenshotSourceOverride.length > 0 ? screenshotSourceOverride : screenshotPath.length > 0 ? "file://" + screenshotPath : ""
@@ -94,7 +100,7 @@ PanelWindow {
     property bool hasThread: threadMessages.length > 0 || streamingAnswer.length > 0 || answerText.length > 0 || errorText.length > 0 || asking
     property bool hasAnswer: answerText.length > 0
     property bool hasAttachment: screenshotPath.length > 0 || screenshotProcess.running
-    readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured || settingsController.xAISecretConfigured
+    readonly property bool hasConfiguredProvider: developerPreviewsEnabled && previewProviderConfiguredOverride !== undefined ? Boolean(previewProviderConfiguredOverride) : settingsController.secretConfigured || settingsController.openRouterSecretConfigured || settingsController.xAISecretConfigured || settingsController.providersModel.count > 0
     property bool canSendPrompt: backendReady && hasConfiguredProvider && prompt.text.trim().length > 0 && !responseBusy && !settingsController.secretsExpanded
     property bool promptEmpty: prompt.text.trim().length === 0
     // No prompt can be sent without a provider key, so the setup hint outranks
@@ -445,6 +451,10 @@ PanelWindow {
         secretPanel.syncRetention();
     }
 
+    function resetProviderForm() {
+        secretPanel.resetProviderForm();
+    }
+
     function initialize() {
         if (initialized || !backendReady)
             return;
@@ -460,6 +470,8 @@ PanelWindow {
         settingsController.loadHistoryRetention();
         settingsController.loadSecretStatus();
         settingsController.loadGlobalShortcut();
+        settingsController.loadProviders();
+        settingsController.loadBarWidgetVisibility();
         historyController.loadHistory();
     }
 
@@ -780,6 +792,8 @@ PanelWindow {
             historyController.historySelectionIndex = -1;
             settingsController.loadSecretStatus();
             settingsController.loadGlobalShortcut();
+            settingsController.loadProviders();
+            settingsController.loadBarWidgetVisibility();
             if (!settingsController.secretConfigured && !settingsController.openRouterSecretConfigured && !settingsController.xAISecretConfigured)
                 Qt.callLater(function() {
                     secretPanel.focusSecretInput();
@@ -1763,6 +1777,8 @@ PanelWindow {
                         showRecentChats: settingsController.showRecentChats
                         saveHistory: settingsController.saveHistory
                         historyRetentionDays: settingsController.historyRetentionDays
+                        barWidgetVisible: settingsController.barWidgetVisible
+                        barWidgetBusy: settingsController.barWidgetBusy
                         retentionModel: retentionOptionsModel
                         confirmClearHistory: historyController.confirmClearHistory
                         recentChatsBusy: settingsController.recentChatsBusy
@@ -1791,10 +1807,14 @@ PanelWindow {
                         xAISecretKeyInput: settingsController.xAISecretKeyInput
                         xAISecretSaveBusy: settingsController.xAISecretSaveBusy
                         xAISecretDeleteBusy: settingsController.xAISecretDeleteBusy
+                        providersModel: settingsController.providersModel
+                        providersBusy: settingsController.providersBusy
+                        providerAddBusy: settingsController.providerAddBusy
                         onShowRecentChatsToggled: checked => settingsController.saveShowRecentChats(checked)
                         onSaveHistoryToggled: checked => settingsController.saveSaveHistory(checked)
                         onRetentionSelected: days => settingsController.saveHistoryRetention(days)
                         onClearHistoryRequested: historyController.clearAllHistory()
+                        onBarWidgetToggled: checked => settingsController.saveBarWidgetVisibility(checked)
                         onShortcutRecordRequested: action => settingsController.beginShortcutRecording(action)
                         onShortcutDisableRequested: action => settingsController.removeGlobalShortcut(action)
                         onShortcutKeyPressed: event => settingsController.captureGlobalShortcut(event)
@@ -1807,6 +1827,8 @@ PanelWindow {
                         onXAISecretInputChanged: text => settingsController.xAISecretKeyInput = text
                         onXAISecretSaveRequested: settingsController.saveXAISecret()
                         onXAISecretDeleteRequested: settingsController.deleteXAISecret()
+                        onProviderSaveRequested: (id, label, baseURL, key, models) => settingsController.addProvider(id, label, baseURL, key, models)
+                        onProviderRemoveRequested: id => settingsController.removeProvider(id)
                         onCancelRequested: root.cancelOrClose()
                     }
 

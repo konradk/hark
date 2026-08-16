@@ -10,10 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"hark/internal/ai"
-	"hark/internal/ai/openai"
-	"hark/internal/ai/openrouter"
-	"hark/internal/ai/xai"
 	"hark/internal/buildinfo"
 	"hark/internal/clipboard"
 	"hark/internal/config"
@@ -23,7 +19,6 @@ import (
 	"hark/internal/logging"
 	"hark/internal/paste"
 	"hark/internal/screenshot"
-	"hark/internal/secrets"
 
 	"golang.org/x/sys/unix"
 )
@@ -63,24 +58,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	providers := map[string]ai.Provider{
-		openai.ProviderName: openai.NewWithAPIKeyProvider(func() (string, error) {
-			key, _, err := secrets.ProviderAPIKey(openai.ProviderName)
-			return key, err
-		}),
-		openrouter.ProviderName: openrouter.NewWithAPIKeyProvider(func() (string, error) {
-			key, _, err := secrets.ProviderAPIKey(openrouter.ProviderName)
-			return key, err
-		}),
-		xai.ProviderName: xai.NewWithAPIKeyProvider(func() (string, error) {
-			key, _, err := secrets.ProviderAPIKey(xai.ProviderName)
-			return key, err
-		}),
-	}
-
 	app := &appState{
+		baseCfg:       cfg,
 		cfg:           cfg,
-		providers:     providers,
+		providers:     newProviderMap(cfg),
 		clip:          clipboard.New(),
 		paster:        paste.New(time.Duration(cfg.Paste.DelayMS)*time.Millisecond, cfg.Paste.Shortcut),
 		hypr:          hyprland.New(),
@@ -91,12 +72,15 @@ func main() {
 		attachmentDir: screenshot.DefaultDir(),
 		states:        make(map[string]runtimeState),
 	}
+	if err := app.reload(ctx); err != nil {
+		logger.Fatalf("load providers: %v", err)
+	}
 	if err := app.runMaintenance(ctx); err != nil {
 		logger.Printf("initial maintenance failed: %v", err)
 	}
 	go app.maintenanceLoop(ctx)
 
-	server := newIPCServer(app, cfg, serverMetadata{SocketPath: *socketPath, ConfigPath: *configPath})
+	server := newIPCServer(app, serverMetadata{SocketPath: *socketPath, ConfigPath: *configPath})
 	logger.Printf("starting harkd on %s", *socketPath)
 	if err := server.Serve(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		logger.Fatalf("ipc server: %v", err)

@@ -58,6 +58,8 @@ type fakeHistory struct {
 	settingErr error
 	cleanup    history.CleanupResult
 	references []string
+	providers  map[string]history.Provider
+	models     map[string]history.Model
 }
 
 func (store *fakeHistory) Add(_ context.Context, entry history.Entry) (int64, error) {
@@ -117,6 +119,65 @@ func (store *fakeHistory) SetSetting(_ context.Context, key settings.Key, value 
 	return nil
 }
 
+func (store *fakeHistory) ListProviders(context.Context) ([]history.Provider, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	providers := make([]history.Provider, 0, len(store.providers))
+	for _, provider := range store.providers {
+		providers = append(providers, provider)
+	}
+	return providers, nil
+}
+
+func (store *fakeHistory) UpsertProvider(_ context.Context, provider history.Provider) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.providers == nil {
+		store.providers = make(map[string]history.Provider)
+	}
+	store.providers[provider.ID] = provider
+	return nil
+}
+
+func (store *fakeHistory) DeleteProvider(_ context.Context, id string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	delete(store.providers, id)
+	for modelID, model := range store.models {
+		if model.Provider == id {
+			delete(store.models, modelID)
+		}
+	}
+	return nil
+}
+
+func (store *fakeHistory) ListModels(context.Context) ([]history.Model, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	models := make([]history.Model, 0, len(store.models))
+	for _, model := range store.models {
+		models = append(models, model)
+	}
+	return models, nil
+}
+
+func (store *fakeHistory) UpsertModel(_ context.Context, model history.Model) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.models == nil {
+		store.models = make(map[string]history.Model)
+	}
+	store.models[model.ID] = model
+	return nil
+}
+
+func (store *fakeHistory) DeleteModel(_ context.Context, id string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	delete(store.models, id)
+	return nil
+}
+
 type fakeCleaner struct {
 	removed []string
 	err     error
@@ -140,7 +201,8 @@ func newTestApp(store *fakeHistory) *appState {
 	cfg.Provider.DefaultModel = "gpt-test"
 	cfg.Provider.Models = []config.ModelConfig{{ID: "gpt-test", Label: "Test", ReasoningEfforts: []string{"auto", "low", "medium", "high"}}}
 	return &appState{
-		cfg: cfg,
+		baseCfg: cfg,
+		cfg:     cfg,
 		providers: map[string]ai.Provider{
 			"openai": fakeProvider{events: []ai.Event{
 				{Type: ai.EventFinal, Text: "answer"},

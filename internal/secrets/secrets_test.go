@@ -92,3 +92,35 @@ func TestDeleteProviderAPIKey(t *testing.T) {
 		t.Fatalf("expected no key, got key=%q source=%q", key, source)
 	}
 }
+
+func TestProviderAPIKeyCustomProviderFallsBackToEnv(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("MY_GW_API_KEY", "env-key")
+
+	key, source, err := ProviderAPIKey("my-gw")
+	if err != nil {
+		t.Fatalf("ProviderAPIKey returned error: %v", err)
+	}
+	if key != "env-key" {
+		t.Fatalf("unexpected key: %q", key)
+	}
+	if source != SourceEnvironment {
+		t.Fatalf("unexpected source: %q", source)
+	}
+}
+
+func TestNormalizeProviderAcceptsCustomNames(t *testing.T) {
+	for _, name := range []string{"my-gw", "local.vllm", "gw_2"} {
+		if _, err := normalizeProvider(name); err != nil {
+			t.Fatalf("normalizeProvider(%q) returned error: %v", name, err)
+		}
+	}
+}
+
+func TestNormalizeProviderRejectsInvalidNames(t *testing.T) {
+	for _, name := range []string{"", "has space", "bad$ymbol", "slash/name"} {
+		if _, err := normalizeProvider(name); err == nil {
+			t.Fatalf("normalizeProvider(%q) unexpectedly succeeded", name)
+		}
+	}
+}

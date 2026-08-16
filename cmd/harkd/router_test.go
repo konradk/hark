@@ -15,7 +15,7 @@ func TestRouterExposesStatusAndRejectsUnknownMethods(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Defaults()
-	server := newIPCServer(nil, cfg, serverMetadata{
+	server := newIPCServer(&appState{cfg: cfg}, serverMetadata{
 		SocketPath: "/tmp/hark-test.sock",
 		ConfigPath: "/tmp/hark-test.lua",
 	})
@@ -49,7 +49,7 @@ func TestRouterStatusUsesDefaultModelProvider(t *testing.T) {
 
 	cfg := config.Defaults()
 	cfg.Provider.DefaultModel = "anthropic/claude-opus-5"
-	server := newIPCServer(nil, cfg, serverMetadata{})
+	server := newIPCServer(&appState{cfg: cfg}, serverMetadata{})
 	result, err := server.Handler(context.Background(), ipc.Request{Method: "status"})
 	if err != nil {
 		t.Fatalf("status: %v", err)
@@ -65,7 +65,7 @@ func TestRouterStatusUsesXAIModelProvider(t *testing.T) {
 
 	cfg := config.Defaults()
 	cfg.Provider.DefaultModel = "grok-4.5"
-	server := newIPCServer(nil, cfg, serverMetadata{})
+	server := newIPCServer(&appState{cfg: cfg}, serverMetadata{})
 	result, err := server.Handler(context.Background(), ipc.Request{Method: "status"})
 	if err != nil {
 		t.Fatalf("status: %v", err)
@@ -80,7 +80,7 @@ func TestRouterReturnsReasoningModesForRequestedModel(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Defaults()
-	server := newIPCServer(nil, cfg, serverMetadata{})
+	server := newIPCServer(&appState{cfg: cfg}, serverMetadata{})
 	params, err := json.Marshal(map[string]string{"model": "anthropic/claude-opus-5"})
 	if err != nil {
 		t.Fatalf("marshal params: %v", err)
@@ -107,7 +107,7 @@ func TestRouterReturnsReasoningModesForRequestedModel(t *testing.T) {
 func TestRouterRejectsUnknownStreamingMethod(t *testing.T) {
 	t.Parallel()
 
-	server := newIPCServer(nil, config.Defaults(), serverMetadata{})
+	server := newIPCServer(&appState{}, serverMetadata{})
 	err := server.StreamHandler(
 		context.Background(),
 		ipc.Request{Method: "unknown"},

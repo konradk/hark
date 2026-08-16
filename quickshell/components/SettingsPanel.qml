@@ -14,6 +14,8 @@ Rectangle {
     property bool saveHistoryBusy: false
     property bool retentionBusy: false
     property bool clearHistoryBusy: false
+    property bool barWidgetVisible: true
+    property bool barWidgetBusy: false
     property string globalShortcut: ""
     property bool globalShortcutConfigured: false
     property string screenshotShortcut: ""
@@ -36,6 +38,15 @@ Rectangle {
     property string xAISecretKeyInput: ""
     property bool xAISecretSaveBusy: false
     property bool xAISecretDeleteBusy: false
+    property var providersModel: null
+    property bool providersBusy: false
+    property bool providerAddBusy: false
+    property bool providerFormVisible: false
+    property string editingProviderID: ""
+    property string providerFormLabel: ""
+    property string providerFormBaseURL: ""
+    property string providerFormKey: ""
+    property var providerFormModels: []
 
     readonly property real labelWidth: 180
 
@@ -43,6 +54,7 @@ Rectangle {
     signal saveHistoryToggled(bool checked)
     signal retentionSelected(int days)
     signal clearHistoryRequested()
+    signal barWidgetToggled(bool checked)
     signal shortcutRecordRequested(string action)
     signal shortcutDisableRequested(string action)
     signal shortcutKeyPressed(var event)
@@ -55,6 +67,8 @@ Rectangle {
     signal xAISecretInputChanged(string text)
     signal xAISecretSaveRequested()
     signal xAISecretDeleteRequested()
+    signal providerSaveRequested(string id, string label, string baseURL, string key, var models)
+    signal providerRemoveRequested(string id)
     signal cancelRequested()
 
     function c(name, fallback) {
@@ -73,6 +87,49 @@ Rectangle {
 
     function focusSecretInput() {
         openAISecretRow.focusInput();
+    }
+
+    function resetProviderForm() {
+        providerFormVisible = false;
+        editingProviderID = "";
+        providerFormLabel = "";
+        providerFormBaseURL = "";
+        providerFormKey = "";
+        providerFormModels = [];
+    }
+
+    function beginAddProvider() {
+        resetProviderForm();
+        providerFormVisible = true;
+    }
+
+    function beginEditProvider(id, label, baseURL, models) {
+        editingProviderID = String(id ?? "");
+        providerFormLabel = String(label ?? "");
+        providerFormBaseURL = String(baseURL ?? "");
+        providerFormKey = "";
+        providerFormModels = Array.isArray(models) ? models.map(model => String(model)) : [];
+        providerFormVisible = true;
+    }
+
+    function addFormModel(id) {
+        const trimmed = String(id).trim();
+        if (trimmed.length === 0 || providerFormModels.indexOf(trimmed) >= 0)
+            return ;
+
+        providerFormModels = providerFormModels.concat([trimmed]);
+    }
+
+    function removeFormModel(id) {
+        providerFormModels = providerFormModels.filter(model => model !== id);
+    }
+
+    function addFormModelFromInput() {
+        if (providerModelInputField.text.trim().length === 0)
+            return ;
+
+        addFormModel(providerModelInputField.text);
+        providerModelInputField.text = "";
     }
 
     function beginShortcutRecording(action) {
@@ -110,6 +167,7 @@ Rectangle {
         openAISecretRow.stopEditing();
         openRouterSecretRow.stopEditing();
         xAISecretRow.stopEditing();
+        panel.resetProviderForm();
     }
 
     Column {
@@ -121,6 +179,16 @@ Rectangle {
         anchors.margins: 14
         spacing: 4
 
+        ToggleSettingRow {
+            width: parent.width
+            title: "Show Hark icon in the bar"
+            hint: "Hide the Hark button from the Omarchy bar if you open it with a shortcut"
+            checked: panel.barWidgetVisible
+            busy: panel.barWidgetBusy
+            theme: panel.theme
+            onToggled: checked => panel.barWidgetToggled(checked)
+        }
+
         Text {
             width: parent.width
             text: "CHATS"
@@ -129,6 +197,7 @@ Rectangle {
             font.pixelSize: panel.fontSize("caption", 10)
             font.letterSpacing: 1.2
             font.weight: Font.DemiBold
+            topPadding: 10
             bottomPadding: 4
         }
 
@@ -261,6 +330,315 @@ Rectangle {
             onRecordRequested: panel.shortcutRecordRequested("screenshot")
             onDisableRequested: panel.shortcutDisableRequested("screenshot")
             onShortcutKeyPressed: event => panel.shortcutKeyPressed(event)
+        }
+
+        Text {
+            width: parent.width
+            text: "PROVIDERS"
+            color: panel.c("text_muted", "#8a93a3")
+            font.family: panel.fontFamily
+            font.pixelSize: panel.fontSize("caption", 10)
+            font.letterSpacing: 1.2
+            font.weight: Font.DemiBold
+            topPadding: 14
+            bottomPadding: 4
+        }
+
+        Repeater {
+            model: panel.providersModel
+
+            delegate: ProviderRow {
+                width: parent.width
+                providerId: String(model.id ?? "")
+                label: String(model.label ?? model.id ?? "")
+                baseUrl: String(model.baseUrl ?? "")
+                models: JSON.parse(String(model.modelsJson ?? "[]"))
+                busy: panel.providersBusy
+                theme: panel.theme
+                fontFamily: panel.fontFamily
+                onEditRequested: panel.beginEditProvider(model.id, model.label, model.baseUrl, JSON.parse(String(model.modelsJson ?? "[]")))
+                onRemoveRequested: panel.providerRemoveRequested(String(model.id ?? ""))
+            }
+        }
+
+        Item {
+            width: parent.width
+            height: 34
+
+            PaletteButton {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: panel.providerFormVisible ? "Cancel" : "Add provider"
+                tooltipText: "Add an OpenAI-compatible provider"
+                theme: panel.theme
+                filled: panel.providerFormVisible
+                enabled: !panel.providerAddBusy
+                onClicked: {
+                    if (panel.providerFormVisible)
+                        panel.resetProviderForm();
+                    else
+                        panel.beginAddProvider();
+                }
+            }
+        }
+
+        Column {
+            width: parent.width
+            visible: panel.providerFormVisible
+            spacing: 4
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Name"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerNameField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerNameField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormLabel
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormLabel = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Base URL"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerBaseUrlField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerBaseUrlField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormBaseURL
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormBaseURL = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "API key"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerKeyField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerKeyField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        text: panel.providerFormKey
+                        echoMode: TextInput.Password
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        onTextChanged: panel.providerFormKey = text
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 32
+
+                Text {
+                    width: panel.labelWidth
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Models"
+                    color: panel.c("text", "#d3d8e2")
+                    font.family: panel.fontFamily
+                    font.pixelSize: panel.fontSize("subtitle", 13)
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.leftMargin: panel.labelWidth + 8
+                    anchors.right: addFormModelButton.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 30
+                    radius: panel.cornerRadius(7)
+                    color: panel.c("input", "#0d1016")
+                    border.width: 1
+                    border.color: providerModelInputField.activeFocus ? panel.c("primary", "#a7c7ff") : panel.c("panel_border", "#2b303b")
+
+                    TextInput {
+                        id: providerModelInputField
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        color: panel.c("text_strong", "#f2f4f8")
+                        font.family: panel.fontFamily
+                        font.pixelSize: panel.fontSize("subtitle", 13)
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        Keys.onReturnPressed: panel.addFormModelFromInput()
+                        Keys.onEnterPressed: panel.addFormModelFromInput()
+                    }
+                }
+
+                PaletteButton {
+                    id: addFormModelButton
+
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Add model"
+                    tooltipText: "Add this model id to the provider"
+                    theme: panel.theme
+                    filled: true
+                    primary: providerModelInputField.text.trim().length > 0
+                    enabled: providerModelInputField.text.trim().length > 0 && !panel.providerAddBusy
+                    onClicked: panel.addFormModelFromInput()
+                }
+            }
+
+            Flow {
+                width: parent.width
+                spacing: 4
+                leftPadding: panel.labelWidth + 8
+                visible: panel.providerFormModels.length > 0
+
+                Repeater {
+                    model: panel.providerFormModels
+
+                    delegate: Rectangle {
+                        height: 22
+                        width: formModelRow.implicitWidth + 20
+                        radius: panel.cornerRadius(5)
+                        color: panel.c("surface_elevated", "#1b1f28")
+                        border.width: 1
+                        border.color: panel.c("panel_border", "#2b303b")
+
+                        Row {
+                            id: formModelRow
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 8
+                            spacing: 6
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: String(modelData)
+                                color: panel.c("text", "#d3d8e2")
+                                font.family: panel.fontFamily
+                                font.pixelSize: panel.fontSize("body_small", 11)
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "\u00d7"
+                                color: panel.c("text_muted", "#8a93a3")
+                                font.family: panel.fontFamily
+                                font.pixelSize: panel.fontSize("body_small", 12)
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    anchors.margins: -6
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: panel.removeFormModel(String(modelData))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: 34
+
+                PaletteButton {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: panel.providerAddBusy ? "Saving" : (panel.editingProviderID.length > 0 ? "Save" : "Add")
+                    tooltipText: panel.editingProviderID.length > 0 ? "Save this provider" : "Add this provider"
+                    theme: panel.theme
+                    filled: true
+                    primary: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0
+                    enabled: panel.providerFormLabel.trim().length > 0 && panel.providerFormBaseURL.trim().length > 0 && !panel.providerAddBusy
+                    onClicked: panel.providerSaveRequested(panel.editingProviderID, panel.providerFormLabel, panel.providerFormBaseURL, panel.providerFormKey, panel.providerFormModels)
+                }
+            }
         }
 
         Text {
