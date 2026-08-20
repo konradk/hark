@@ -47,21 +47,25 @@ Rectangle {
         spacing: 10
 
         Text {
-            text: row.promptText
+            objectName: "historyPromptPreview"
+            text: row.previewText(row.promptText)
             color: row.selected || mouseArea.containsMouse ? row.c("text_strong", "#f2f4f8") : row.c("text", "#d3d8e2")
             font.family: row.fontFamily
             font.pixelSize: row.fontSize("body", 13)
             elide: Text.ElideRight
+            maximumLineCount: 1
             width: Math.min(implicitWidth, parent.width * 0.62)
             anchors.verticalCenter: parent.verticalCenter
         }
 
         Text {
+            objectName: "historyResponsePreview"
             text: row.previewText(row.responseText)
             color: row.c("text_muted", "#8a93a3")
             font.family: row.fontFamily
             font.pixelSize: row.fontSize("body_small", 12)
             elide: Text.ElideRight
+            maximumLineCount: 1
             width: parent.width - x
             anchors.verticalCenter: parent.verticalCenter
         }
