@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-required_go_version="1.25.12"
+required_go_version="1.25.13"
 
 bin_dir="${HOME}/.local/bin"
 config_root="${XDG_CONFIG_HOME:-${HOME}/.config}"
