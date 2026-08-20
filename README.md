@@ -126,7 +126,7 @@ The installer writes:
 ~/.config/hark/env
 ```
 
-A source checkout requires Go 1.25.12 and runs the test suite before building.
+A source checkout requires Go 1.25.13 and runs the test suite before building.
 A release archive contains static binaries and installs without Go. Files are
 replaced atomically. The installer restarts an already-running daemon and
 Quickshell instance; it does not enable a service that was previously
@@ -198,7 +198,7 @@ second Quickshell process.
 
 ## Development
 
-Go 1.25.12 or newer is required to build the daemon and CLI. The version is
+Go 1.25.13 or newer is required to build the daemon and CLI. The version is
 pinned in `mise.toml`; the Go toolchain directive provides the same version
 when automatic toolchain downloads are enabled.
 

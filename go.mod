@@ -2,7 +2,7 @@ module hark
 
 go 1.25.0
 
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/yuin/gopher-lua v1.1.2
